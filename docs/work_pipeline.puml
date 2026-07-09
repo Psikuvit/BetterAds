@@ -1,0 +1,84 @@
+@startuml
+left to right direction
+skinparam componentStyle rectangle
+skinparam linetype ortho
+skinparam shadowing false
+
+title BetterAds - Component Architecture
+
+actor Client
+
+package "Client Layer" {
+    component "Frontend\n(Web / Mobile)" as FE
+}
+
+package "Backend" {
+    component "API Server\n(Spring Boot)" as API
+    component "RabbitMQ" <<Queue>> as MQ
+}
+
+package "Processing Services" {
+    component "Worker" as WORKER
+    component "Validation Service" as VALID
+    component "Feature Processing" as FEAT
+    component "Human Review" as HR
+    component "Local AI Models\n(Future)" as MODELS
+}
+
+package "Storage" {
+    database "MySQL" as DB
+    database "Redis Cache" as REDIS
+    component "S3 Storage" as S3
+    component "CDN" as CDN
+}
+
+package "Business Services" {
+    component "Fraud Detection" as FRAUD
+    component "Billing Service" as BILL
+}
+
+'==========================
+' Client
+'==========================
+
+Client --> FE
+FE --> API
+
+'==========================
+' Backend
+'==========================
+
+API --> DB
+API --> REDIS
+API --> MQ
+API --> FRAUD
+API --> BILL
+API --> CDN
+API --> S3
+
+'==========================
+' Processing
+'==========================
+
+MQ --> WORKER
+
+WORKER --> VALID
+WORKER --> FEAT
+WORKER --> HR
+
+VALID --> MODELS
+FEAT --> MODELS
+
+FEAT --> DB
+FEAT --> S3
+
+WORKER --> DB
+
+'==========================
+' Business
+'==========================
+
+FRAUD --> DB
+BILL --> DB
+
+@enduml
