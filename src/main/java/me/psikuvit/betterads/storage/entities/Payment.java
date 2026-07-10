@@ -21,6 +21,9 @@ public class Payment {
     @Column(nullable = false, unique = true)
     private String stripePaymentIntentId;
 
+    @Column(unique = true)
+    private String clientIdempotencyKey;
+
     @Column(nullable = false)
     private BigDecimal amount;
 
@@ -41,6 +44,8 @@ public class Payment {
     public void setAdvertiserId(Long advertiserId) { this.advertiserId = advertiserId; }
     public String getStripePaymentIntentId() { return stripePaymentIntentId; }
     public void setStripePaymentIntentId(String stripePaymentIntentId) { this.stripePaymentIntentId = stripePaymentIntentId; }
+    public String getClientIdempotencyKey() { return clientIdempotencyKey; }
+    public void setClientIdempotencyKey(String clientIdempotencyKey) { this.clientIdempotencyKey = clientIdempotencyKey; }
     public BigDecimal getAmount() { return amount; }
     public void setAmount(BigDecimal amount) { this.amount = amount; }
     public String getCurrency() { return currency; }
