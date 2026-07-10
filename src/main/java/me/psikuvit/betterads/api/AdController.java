@@ -3,8 +3,10 @@ package me.psikuvit.betterads.api;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import me.psikuvit.betterads.billing.BillingService;
+import me.psikuvit.betterads.common.exceptions.ErrorResponse;
 import me.psikuvit.betterads.embed.EmbedService;
 import me.psikuvit.betterads.fraud.FraudService;
+import me.psikuvit.betterads.fraud.ViewTokenService;
 import me.psikuvit.betterads.links.LinkService;
 import me.psikuvit.betterads.storage.entities.AdVersion;
 import me.psikuvit.betterads.storage.repositories.AdVersionRepository;
@@ -13,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -26,28 +29,35 @@ public class AdController {
     private final BillingService billingService;
     private final AdVersionRepository adVersionRepository;
     private final EmbedService embedService;
+    private final ViewTokenService viewTokenService;
 
     public AdController(LinkService linkService, FraudService fraudService,
                         BillingService billingService, AdVersionRepository adVersionRepository,
-                        EmbedService embedService) {
+                        EmbedService embedService, ViewTokenService viewTokenService) {
         this.linkService = linkService;
         this.fraudService = fraudService;
         this.billingService = billingService;
         this.adVersionRepository = adVersionRepository;
         this.embedService = embedService;
+        this.viewTokenService = viewTokenService;
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<?> serveAd(@PathVariable Long id,
                                      @RequestParam(required = false) String locale,
+                                     @RequestParam(required = false) String vt,
                                      HttpServletRequest request) {
         String ip = extractIp(request);
         String deviceInfo = request.getHeader("User-Agent");
 
-        if (fraudService.isLikelyFraud(ip)) {
+        // A valid one-time view token proves this came from a genuine widget load and
+        // can't be replayed, so it's trusted in place of the IP-rate-limit fallback check.
+        boolean trustedByToken = viewTokenService.validateAndConsume(vt, id);
+        if (!trustedByToken && fraudService.isLikelyFraud(ip)) {
             log.warn("Blocked fraudulent impression for adId={} from ip={}", id, ip);
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                    .body(Map.of("error", "Too many requests from this IP"));
+                    .body(new ErrorResponse("Too many requests from this IP",
+                            HttpStatus.TOO_MANY_REQUESTS.value(), request.getRequestURI(), Instant.now()));
         }
 
         // Always load from DB so we have real IDs for billing

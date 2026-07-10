@@ -1,6 +1,7 @@
 package me.psikuvit.betterads.embed;
 
 import lombok.extern.slf4j.Slf4j;
+import me.psikuvit.betterads.fraud.ViewTokenService;
 import me.psikuvit.betterads.storage.entities.AdLink;
 import me.psikuvit.betterads.storage.repositories.AdLinkRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,12 +15,14 @@ import java.util.UUID;
 public class EmbedService {
 
     private final AdLinkRepository adLinkRepository;
+    private final ViewTokenService viewTokenService;
 
     @Value("${app.base-url}")
     private String baseUrl;
 
-    public EmbedService(AdLinkRepository adLinkRepository) {
+    public EmbedService(AdLinkRepository adLinkRepository, ViewTokenService viewTokenService) {
         this.adLinkRepository = adLinkRepository;
+        this.viewTokenService = viewTokenService;
     }
 
     public AdLink generateLink(Long adId) {
@@ -52,6 +55,7 @@ public class EmbedService {
     }
 
     public String widgetHtml(Long adId) {
+        String viewToken = viewTokenService.issueToken(adId);
         return """
                 <!DOCTYPE html>
                 <html>
@@ -72,8 +76,9 @@ public class EmbedService {
                   <script>
                     (function() {
                       var adId = %d;
+                      var vt = %s;
                       var locale = (navigator.language || 'en').split('-')[0];
-                      fetch('/api/ads/' + adId + '?locale=' + locale)
+                      fetch('/api/ads/' + adId + '?locale=' + locale + '&vt=' + encodeURIComponent(vt))
                         .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); })
                         .then(function(data) {
                           if (data.variants && data.variants.length > 0) {
@@ -91,6 +96,6 @@ public class EmbedService {
                   </script>
                 </body>
                 </html>
-                """.formatted(adId);
+                """.formatted(adId, "'" + viewToken + "'");
     }
 }
