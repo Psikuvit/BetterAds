@@ -32,8 +32,6 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
     CMD curl -fs http://localhost:8080/actuator/health | grep -q '"status":"UP"' || exit 1
 
-# Runs BetterAdsApplication (web + the ad-processing RabbitMQ consumer — both
-# live in the same component-scanned context). See docker-compose.yml for
-# how to instead run WorkerApplication as a separate, web-server-less
-# process if you want to scale ad processing independently of the API.
+# Runs BetterAdsApplication: the web API and the ad-processing RabbitMQ
+# consumer both live in this single component-scanned context.
 ENTRYPOINT ["java", "-jar", "app.jar"]

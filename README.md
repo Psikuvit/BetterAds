@@ -10,12 +10,9 @@ not a setup guide.
 ## Architecture at a glance
 
 BetterAds is a modular monolith: one Spring Boot codebase, organized into
-packages by responsibility, with a separate async worker path for the
-processing pipeline. There are two `@SpringBootApplication` entrypoints,
-`BetterAdsApplication` and `WorkerApplication` — both currently scan the same
-full package tree, so in practice they boot an identical context; the split
-exists to allow the ad-processing consumer to eventually be deployed as an
-isolated process without touching the web-facing API.
+packages by responsibility, with an async worker path for the processing
+pipeline. Everything — the web API and the ad-processing RabbitMQ consumer —
+runs inside a single entrypoint, `BetterAdsApplication`.
 
 Stack: Spring Boot, MySQL (via Flyway-managed schema), Redis, RabbitMQ, AWS
 S3 (SDK v1), Spring Security with JWT, Stripe, Server-Sent Events for
