@@ -1,7 +1,7 @@
 package me.psikuvit.betterads.ai.local;
 
 import me.psikuvit.betterads.ai.ModerationService;
-import me.psikuvit.betterads.validation.ValidationResult;
+import me.psikuvit.betterads.validation.dto.ValidationResult;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;

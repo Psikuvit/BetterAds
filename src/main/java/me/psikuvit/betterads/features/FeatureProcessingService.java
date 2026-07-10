@@ -3,7 +3,7 @@ package me.psikuvit.betterads.features;
 import me.psikuvit.betterads.ai.SpeechEvaluationService;
 import me.psikuvit.betterads.ai.TranslationService;
 import me.psikuvit.betterads.storage.entities.AdVersion;
-import me.psikuvit.betterads.storage.repo.AdVersionRepository;
+import me.psikuvit.betterads.storage.repositories.AdVersionRepository;
 import org.springframework.stereotype.Service;
 
 @Service

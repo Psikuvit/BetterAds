@@ -1,4 +1,4 @@
-package me.psikuvit.betterads.auth;
+package me.psikuvit.betterads.security;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;

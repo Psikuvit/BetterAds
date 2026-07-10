@@ -1,4 +1,4 @@
-package me.psikuvit.betterads.validation;
+package me.psikuvit.betterads.validation.dto;
 
 import org.springframework.stereotype.Service;
 

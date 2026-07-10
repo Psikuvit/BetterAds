@@ -1,6 +1,8 @@
 package me.psikuvit.betterads.validation;
 
 import me.psikuvit.betterads.ai.ModerationService;
+import me.psikuvit.betterads.validation.dto.HumanReviewQueue;
+import me.psikuvit.betterads.validation.dto.ValidationResult;
 import org.springframework.stereotype.Service;
 
 @Service

@@ -1,4 +1,4 @@
-package me.psikuvit.betterads.validation;
+package me.psikuvit.betterads.validation.dto;
 
 public enum ValidationResult {
     APPROVED,

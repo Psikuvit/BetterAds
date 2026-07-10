@@ -1,4 +1,4 @@
-package me.psikuvit.betterads.ratelimit;
+package me.psikuvit.betterads.config;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;

@@ -1,7 +1,7 @@
 package me.psikuvit.betterads.links;
 
 import me.psikuvit.betterads.storage.entities.AdVersion;
-import me.psikuvit.betterads.storage.repo.AdVersionRepository;
+import me.psikuvit.betterads.storage.repositories.AdVersionRepository;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.GetMapping;

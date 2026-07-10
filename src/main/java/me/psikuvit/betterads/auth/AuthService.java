@@ -3,8 +3,9 @@ package me.psikuvit.betterads.auth;
 import me.psikuvit.betterads.auth.dto.LoginResponse;
 import me.psikuvit.betterads.auth.exceptions.AuthenticationException;
 import me.psikuvit.betterads.auth.exceptions.UserAlreadyExistsException;
+import me.psikuvit.betterads.security.JwtTokenProvider;
 import me.psikuvit.betterads.storage.entities.User;
-import me.psikuvit.betterads.storage.repo.UserRepository;
+import me.psikuvit.betterads.storage.repositories.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 

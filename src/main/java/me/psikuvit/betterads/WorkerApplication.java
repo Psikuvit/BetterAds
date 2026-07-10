@@ -1,4 +1,4 @@
-package me.psikuvit.betterads.worker;
+package me.psikuvit.betterads;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

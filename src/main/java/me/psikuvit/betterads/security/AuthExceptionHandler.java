@@ -1,4 +1,4 @@
-package me.psikuvit.betterads.auth;
+package me.psikuvit.betterads.security;
 
 import me.psikuvit.betterads.auth.exceptions.AuthenticationException;
 import me.psikuvit.betterads.auth.exceptions.UserAlreadyExistsException;

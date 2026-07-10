@@ -1,9 +1,8 @@
 package me.psikuvit.betterads.worker;
 
 import me.psikuvit.betterads.features.FeatureProcessingService;
-import me.psikuvit.betterads.storage.entities.Ad;
-import me.psikuvit.betterads.storage.repo.AdRepository;
-import me.psikuvit.betterads.validation.ValidationResult;
+import me.psikuvit.betterads.storage.repositories.AdRepository;
+import me.psikuvit.betterads.validation.dto.ValidationResult;
 import me.psikuvit.betterads.validation.ValidationService;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;

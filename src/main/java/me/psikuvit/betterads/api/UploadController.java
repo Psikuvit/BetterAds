@@ -2,7 +2,7 @@ package me.psikuvit.betterads.api;
 
 import me.psikuvit.betterads.queue.ProcessingQueueService;
 import me.psikuvit.betterads.storage.entities.Ad;
-import me.psikuvit.betterads.storage.repo.AdRepository;
+import me.psikuvit.betterads.storage.repositories.AdRepository;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;

@@ -1,4 +1,4 @@
-package me.psikuvit.betterads.ratelimit;
+package me.psikuvit.betterads.config;
 
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.Bucket4j;
