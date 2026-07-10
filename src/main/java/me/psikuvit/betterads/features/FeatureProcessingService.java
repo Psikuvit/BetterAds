@@ -33,8 +33,8 @@ public class FeatureProcessingService {
             log.debug("Translation completed for adId: {}. Translated key: {}", adId, translatedKey);
 
             // 2) Speech evaluation
-            double score = speechEvaluationService.evaluate(translatedKey);
-            log.info("Speech quality score for adId: {}: {}", adId, score);
+            //double score = speechEvaluationService.evaluate(translatedKey);
+            log.info("Speech quality skipped for adId: {}", adId);
 
             // 3) Persist ad version
             AdVersion v = new AdVersion();
