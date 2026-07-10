@@ -1,5 +1,6 @@
 package me.psikuvit.betterads.api;
 
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import me.psikuvit.betterads.auth.CurrentUserService;
 import me.psikuvit.betterads.storage.dto.AdStatus;
@@ -47,10 +48,15 @@ public class ValidationController {
 
     @GetMapping("/{id}/events")
     @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
-    public SseEmitter events(@PathVariable Long id) {
+    public SseEmitter events(@PathVariable Long id, HttpServletResponse response) {
         if (adRepository.findById(id).isEmpty()) {
             throw new NoSuchElementException("Ad not found: " + id);
         }
+        // Prevent intermediary proxies (Render/Cloudflare) from buffering this
+        // streaming response, which otherwise turns a quiet SSE connection
+        // into a 502 before any event is ever flushed to the client.
+        response.setHeader("Cache-Control", "no-cache");
+        response.setHeader("X-Accel-Buffering", "no");
         return eventPublisher.subscribe(id);
     }
 
