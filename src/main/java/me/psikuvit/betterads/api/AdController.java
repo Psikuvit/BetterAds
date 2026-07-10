@@ -29,6 +29,8 @@ import java.util.Map;
 @Slf4j
 public class AdController {
 
+    private static final String DEFAULT_LOCALE = "en";
+
     private final LinkService linkService;
     private final FraudService fraudService;
     private final BillingService billingService;
@@ -82,10 +84,7 @@ public class AdController {
             return ResponseEntity.notFound().build();
         }
 
-        List<AdVersion> matched = locale != null && !locale.isBlank()
-                ? all.stream().filter(v -> locale.equalsIgnoreCase(v.getLocale())).toList()
-                : all;
-        List<AdVersion> variants = matched.isEmpty() ? all : matched;
+        List<AdVersion> variants = resolveVariants(all, locale);
 
         // Record view against the best-matched variant
         AdVersion best = variants.getFirst();
@@ -98,7 +97,8 @@ public class AdController {
                 .map(v -> storageService.presignGetUrl(extractStorageKey(v.getStorageKey()), Duration.ofHours(2)))
                 .toList();
 
-        log.info("Served adId={} to ip={}, variants={}", id, ip, urls.size());
+        log.info("Served adId={} to ip={}, requestedLocale={}, resolvedLocale={}, variants={}",
+                id, ip, locale, best.getLocale(), urls.size());
         return ResponseEntity.ok(Map.of("adId", id, "variants", urls));
     }
 
@@ -117,6 +117,33 @@ public class AdController {
     private ResponseEntity<ErrorResponse> tooManyRequests(HttpServletRequest request, String message) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .body(new ErrorResponse(message, HttpStatus.TOO_MANY_REQUESTS.value(), request.getRequestURI(), Instant.now()));
+    }
+
+    /**
+     * Resolves which AdVersion(s) to serve for a requested locale:
+     * 1. Exact locale match, if the requester specified one and it exists.
+     * 2. The platform default locale, if present — a stable, predictable
+     *    fallback rather than whatever order the DB happens to return.
+     * 3. Whatever exists at all, as a last resort, so a viewer always sees something.
+     */
+    private List<AdVersion> resolveVariants(List<AdVersion> all, String requestedLocale) {
+        if (requestedLocale != null && !requestedLocale.isBlank()) {
+            List<AdVersion> exact = all.stream()
+                    .filter(v -> requestedLocale.equalsIgnoreCase(v.getLocale()))
+                    .toList();
+            if (!exact.isEmpty()) {
+                return exact;
+            }
+        }
+
+        List<AdVersion> defaultLocale = all.stream()
+                .filter(v -> DEFAULT_LOCALE.equalsIgnoreCase(v.getLocale()))
+                .toList();
+        if (!defaultLocale.isEmpty()) {
+            return defaultLocale;
+        }
+
+        return all;
     }
 
     private String extractStorageKey(String rawKey) {
