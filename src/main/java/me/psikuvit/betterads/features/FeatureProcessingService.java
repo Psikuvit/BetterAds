@@ -1,5 +1,6 @@
 package me.psikuvit.betterads.features;
-
+ 
+import lombok.extern.slf4j.Slf4j;
 import me.psikuvit.betterads.ai.SpeechEvaluationService;
 import me.psikuvit.betterads.ai.TranslationService;
 import me.psikuvit.betterads.storage.entities.AdVersion;
@@ -7,6 +8,7 @@ import me.psikuvit.betterads.storage.repositories.AdVersionRepository;
 import org.springframework.stereotype.Service;
 
 @Service
+@Slf4j
 public class FeatureProcessingService {
     // Placeholder orchestration: translation, speech eval, and variant creation
 
@@ -21,21 +23,23 @@ public class FeatureProcessingService {
     }
 
     public void process(String adId, String storageKey, String targetLocale) {
-        System.out.println("Processing features for ad=" + adId + " key=" + storageKey + " locale=" + targetLocale);
-
+        log.info("Processing features for adId: {}, storageKey: {}, targetLocale: {}", adId, storageKey, targetLocale);
+ 
         // 1) Translation (may return new storage key)
         String translatedKey = translationService.translate(storageKey, targetLocale);
-
+        log.debug("Translation completed for adId: {}. Translated key: {}", adId, translatedKey);
+ 
         // 2) Speech evaluation
         double score = speechEvaluationService.evaluate(translatedKey);
-        System.out.println("Speech quality score=" + score);
-
+        log.info("Speech quality score for adId: {}: {}", adId, score);
+ 
         // 3) Persist ad version (one variant for now)
         AdVersion v = new AdVersion();
         v.setAdId(Long.valueOf(adId));
         v.setLocale(targetLocale == null ? "" : targetLocale);
         v.setStorageKey(translatedKey);
         adVersionRepository.save(v);
+        log.info("Ad version persisted for adId: {} with locale: {}", adId, targetLocale);
     }
 }
 

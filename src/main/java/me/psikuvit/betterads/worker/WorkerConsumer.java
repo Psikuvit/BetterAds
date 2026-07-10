@@ -1,5 +1,6 @@
 package me.psikuvit.betterads.worker;
-
+ 
+import lombok.extern.slf4j.Slf4j;
 import me.psikuvit.betterads.features.FeatureProcessingService;
 import me.psikuvit.betterads.storage.repositories.AdRepository;
 import me.psikuvit.betterads.validation.dto.ValidationResult;
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 @Component
+@Slf4j
 public class WorkerConsumer {
 
     private final ValidationService validationService;
@@ -24,12 +26,12 @@ public class WorkerConsumer {
     @RabbitListener(queues = "ad-processing")
     @Transactional
     public void handle(String adIdStr) {
-        System.out.println("Received job for adId=" + adIdStr);
+        log.info("Received job for adId={}", adIdStr);
         long adId;
         try {
             adId = Long.parseLong(adIdStr);
         } catch (NumberFormatException e) {
-            System.err.println("Invalid adId from queue: " + adIdStr);
+            log.error("Invalid adId from queue: {}", adIdStr);
             return;
         }
 
@@ -37,29 +39,36 @@ public class WorkerConsumer {
             try {
                 ad.setStatus("validating");
                 adRepository.save(ad);
-
+                log.info("Ad ID: {} status updated to validating", adId);
+ 
                 ValidationResult result = validationService.validate(ad.getStorageKey(), ad.getId().toString());
-
+                log.info("Validation result for Ad ID: {}: {}", adId, result);
+ 
                 if (result == ValidationResult.APPROVED) {
                     ad.setStatus("processing");
                     adRepository.save(ad);
-
+                    log.info("Ad ID: {} status updated to processing", adId);
+ 
                     featureProcessingService.process(ad.getId().toString(), ad.getStorageKey(), ad.getTargetLocale());
-
+                    log.info("Feature processing completed for Ad ID: {}", adId);
+ 
                     ad.setStatus("live");
                     adRepository.save(ad);
+                    log.info("Ad ID: {} status updated to live", adId);
                 } else if (result == ValidationResult.FLAGGED) {
                     ad.setStatus("flagged");
                     adRepository.save(ad);
+                    log.info("Ad ID: {} status updated to flagged (pending human review)", adId);
                 } else {
                     ad.setStatus("rejected");
                     adRepository.save(ad);
+                    log.info("Ad ID: {} status updated to rejected", adId);
                 }
             } catch (Exception ex) {
                 // mark as failed for retry/inspection
                 ad.setStatus("failed");
                 adRepository.save(ad);
-                System.err.println("Worker failed for adId=" + adId + " : " + ex.getMessage());
+                log.error("Worker failed for adId={} : {}", adId, ex.getMessage(), ex);
             }
         });
     }
