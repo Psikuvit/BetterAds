@@ -1,7 +1,6 @@
 package me.psikuvit.betterads.billing;
 
 import lombok.extern.slf4j.Slf4j;
-import me.psikuvit.betterads.storage.entities.Campaign;
 import me.psikuvit.betterads.storage.entities.View;
 import me.psikuvit.betterads.storage.repositories.AdRepository;
 import me.psikuvit.betterads.storage.repositories.AdVersionRepository;
@@ -49,33 +48,32 @@ public class BillingService {
     }
 
     @Transactional
-    public boolean recordView(Long adVersionId, String ip, String deviceInfo) {
-        return adVersionRepository.findById(adVersionId).map(adVersion -> {
-            return adRepository.findById(adVersion.getAdId()).map(ad -> {
-                return campaignRepository.findById(ad.getCampaignId()).map(campaign -> {
-                    BigDecimal cost = rateFor(adVersion.getLocale());
-                    BigDecimal newSpent = campaign.getSpent().add(cost);
+    public void recordView(Long adVersionId, String ip, String deviceInfo) {
+        adVersionRepository.findById(adVersionId).map(adVersion ->
+                adRepository.findById(adVersion.getAdId()).map(ad ->
+                        campaignRepository.findById(ad.getCampaignId()).map(campaign -> {
+                                    BigDecimal cost = rateFor(adVersion.getLocale());
+                                    BigDecimal newSpent = campaign.getSpent().add(cost);
 
-                    if (newSpent.compareTo(campaign.getBudget()) > 0) {
-                        log.warn("Campaign {} budget exhausted (budget={}, spent={}), skipping view",
-                                campaign.getId(), campaign.getBudget(), campaign.getSpent());
-                        return false;
-                    }
+                                    if (newSpent.compareTo(campaign.getBudget()) > 0) {
+                                        log.warn("Campaign {} budget exhausted (budget={}, spent={}), skipping view",
+                                                campaign.getId(), campaign.getBudget(), campaign.getSpent());
+                                        return false;
+                                    }
 
-                    View view = new View();
-                    view.setAdVersionId(adVersionId);
-                    view.setViewerIp(ip);
-                    view.setDeviceInfo(deviceInfo);
-                    viewRepository.save(view);
+                                    View view = new View();
+                                    view.setAdVersionId(adVersionId);
+                                    view.setViewerIp(ip);
+                                    view.setDeviceInfo(deviceInfo);
+                                    viewRepository.save(view);
 
-                    campaign.setSpent(newSpent);
-                    campaignRepository.save(campaign);
+                                    campaign.setSpent(newSpent);
+                                    campaignRepository.save(campaign);
 
-                    log.debug("Recorded view for adVersion={}, campaign={}, cost={}, totalSpent={}",
-                            adVersionId, campaign.getId(), cost, newSpent);
-                    return true;
-                }).orElse(false);
-            }).orElse(false);
-        }).orElse(false);
+                                    log.debug("Recorded view for adVersion={}, campaign={}, cost={}, totalSpent={}",
+                                            adVersionId, campaign.getId(), cost, newSpent);
+                                    return true;
+                                }
+                        ).orElse(false)).orElse(false));
     }
 }
