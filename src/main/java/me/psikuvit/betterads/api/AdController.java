@@ -8,7 +8,10 @@ import me.psikuvit.betterads.embed.EmbedService;
 import me.psikuvit.betterads.fraud.FraudService;
 import me.psikuvit.betterads.fraud.ViewTokenService;
 import me.psikuvit.betterads.links.LinkService;
+import me.psikuvit.betterads.security.ClientIpResolver;
+import me.psikuvit.betterads.storage.entities.Ad;
 import me.psikuvit.betterads.storage.entities.AdVersion;
+import me.psikuvit.betterads.storage.repositories.AdRepository;
 import me.psikuvit.betterads.storage.repositories.AdVersionRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,19 +30,24 @@ public class AdController {
     private final LinkService linkService;
     private final FraudService fraudService;
     private final BillingService billingService;
+    private final AdRepository adRepository;
     private final AdVersionRepository adVersionRepository;
     private final EmbedService embedService;
     private final ViewTokenService viewTokenService;
+    private final ClientIpResolver clientIpResolver;
 
     public AdController(LinkService linkService, FraudService fraudService,
-                        BillingService billingService, AdVersionRepository adVersionRepository,
-                        EmbedService embedService, ViewTokenService viewTokenService) {
+                        BillingService billingService, AdRepository adRepository,
+                        AdVersionRepository adVersionRepository, EmbedService embedService,
+                        ViewTokenService viewTokenService, ClientIpResolver clientIpResolver) {
         this.linkService = linkService;
         this.fraudService = fraudService;
         this.billingService = billingService;
+        this.adRepository = adRepository;
         this.adVersionRepository = adVersionRepository;
         this.embedService = embedService;
         this.viewTokenService = viewTokenService;
+        this.clientIpResolver = clientIpResolver;
     }
 
     @GetMapping("/{id}")
@@ -47,17 +55,24 @@ public class AdController {
                                      @RequestParam(required = false) String locale,
                                      @RequestParam(required = false) String vt,
                                      HttpServletRequest request) {
-        String ip = extractIp(request);
+        String ip = clientIpResolver.resolve(request);
         String deviceInfo = request.getHeader("User-Agent");
+        boolean suspiciousUserAgent = deviceInfo == null || deviceInfo.isBlank();
 
         // A valid one-time view token proves this came from a genuine widget load and
-        // can't be replayed, so it's trusted in place of the IP-rate-limit fallback check.
-        boolean trustedByToken = viewTokenService.validateAndConsume(vt, id);
+        // can't be replayed, so it's trusted in place of the IP-rate-limit fallback check —
+        // unless the request also has no User-Agent, in which case it doesn't get the free
+        // pass and is still subject to the normal fraud check (soft signal, not a hard block).
+        boolean trustedByToken = !suspiciousUserAgent && viewTokenService.validateAndConsume(vt, id);
         if (!trustedByToken && fraudService.isLikelyFraud(ip)) {
             log.warn("Blocked fraudulent impression for adId={} from ip={}", id, ip);
-            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                    .body(new ErrorResponse("Too many requests from this IP",
-                            HttpStatus.TOO_MANY_REQUESTS.value(), request.getRequestURI(), Instant.now()));
+            return tooManyRequests(request, "Too many requests from this IP");
+        }
+
+        Long campaignId = adRepository.findById(id).map(Ad::getCampaignId).orElse(null);
+        if (campaignId != null && fraudService.isCampaignOverVelocity(campaignId)) {
+            log.warn("Blocked impression for adId={} — campaign {} exceeded view velocity cap", id, campaignId);
+            return tooManyRequests(request, "This ad is receiving too many requests, please try again shortly");
         }
 
         // Always load from DB so we have real IDs for billing
@@ -92,11 +107,8 @@ public class AdController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    private String extractIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
+    private ResponseEntity<ErrorResponse> tooManyRequests(HttpServletRequest request, String message) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(new ErrorResponse(message, HttpStatus.TOO_MANY_REQUESTS.value(), request.getRequestURI(), Instant.now()));
     }
 }

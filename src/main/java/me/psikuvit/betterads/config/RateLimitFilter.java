@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import me.psikuvit.betterads.security.ClientIpResolver;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -16,10 +17,12 @@ import java.time.Instant;
 public class RateLimitFilter extends OncePerRequestFilter {
     private final RateLimitService rateLimitService;
     private final RateLimitProperties properties;
+    private final ClientIpResolver clientIpResolver;
 
-    public RateLimitFilter(RateLimitService rateLimitService, RateLimitProperties properties) {
+    public RateLimitFilter(RateLimitService rateLimitService, RateLimitProperties properties, ClientIpResolver clientIpResolver) {
         this.rateLimitService = rateLimitService;
         this.properties = properties;
+        this.clientIpResolver = clientIpResolver;
     }
 
     @Override
@@ -54,12 +57,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return "user:" + userId;
         }
 
-        String xForwardedFor = request.getHeader("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-            return "ip:" + xForwardedFor.split(",")[0];
-        }
-
-        return "ip:" + request.getRemoteAddr();
+        return "ip:" + clientIpResolver.resolve(request);
     }
 
     private String escapeJson(String value) {
