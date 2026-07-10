@@ -2,6 +2,7 @@ package me.psikuvit.betterads.api;
 
 import lombok.extern.slf4j.Slf4j;
 import me.psikuvit.betterads.auth.CurrentUserService;
+import me.psikuvit.betterads.storage.dto.CampaignStatus;
 import me.psikuvit.betterads.storage.entities.Campaign;
 import me.psikuvit.betterads.storage.entities.User;
 import me.psikuvit.betterads.storage.repositories.CampaignRepository;
@@ -43,7 +44,7 @@ public class AnalyticsController {
         BigDecimal totalSpent = campaigns.stream().map(Campaign::getSpent).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalBudget = campaigns.stream().map(Campaign::getBudget).reduce(BigDecimal.ZERO, BigDecimal::add);
         long totalViews = campaigns.stream().mapToLong(c -> viewRepository.countViewsByCampaignId(c.getId())).sum();
-        Map<String, Long> campaignsByStatus = campaigns.stream()
+        Map<CampaignStatus, Long> campaignsByStatus = campaigns.stream()
                 .collect(Collectors.groupingBy(Campaign::getStatus, Collectors.counting()));
 
         return ResponseEntity.ok(Map.of(

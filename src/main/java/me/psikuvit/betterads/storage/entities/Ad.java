@@ -1,6 +1,8 @@
 package me.psikuvit.betterads.storage.entities;
 
 import jakarta.persistence.*;
+import me.psikuvit.betterads.storage.dto.AdStatus;
+
 import java.time.Instant;
 
 @Entity
@@ -16,7 +18,8 @@ public class Ad {
 
     private String storageKey;
 
-    private String status; // pending, validating, processing, live, rejected
+    @Enumerated(EnumType.STRING)
+    private AdStatus status;
 
     private String targetLocale;
 
@@ -30,8 +33,8 @@ public class Ad {
     public void setTitle(String title) { this.title = title; }
     public String getStorageKey() { return storageKey; }
     public void setStorageKey(String storageKey) { this.storageKey = storageKey; }
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
+    public AdStatus getStatus() { return status; }
+    public void setStatus(AdStatus status) { this.status = status; }
     public String getTargetLocale() { return targetLocale; }
     public void setTargetLocale(String targetLocale) { this.targetLocale = targetLocale; }
     public Instant getCreatedAt() { return createdAt; }

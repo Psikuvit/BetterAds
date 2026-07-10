@@ -2,6 +2,7 @@ package me.psikuvit.betterads.api;
 
 import lombok.extern.slf4j.Slf4j;
 import me.psikuvit.betterads.auth.CurrentUserService;
+import me.psikuvit.betterads.storage.dto.CampaignStatus;
 import me.psikuvit.betterads.storage.entities.Campaign;
 import me.psikuvit.betterads.storage.entities.User;
 import me.psikuvit.betterads.storage.repositories.AdRepository;
@@ -19,15 +20,13 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Map;
-import java.util.Set;
 
 @RestController
 @RequestMapping("/api/campaigns")
 @Slf4j
 public class CampaignController {
-
-    private static final Set<String> VALID_STATUSES = Set.of("draft", "active", "paused", "completed", "archived");
 
     private final CampaignRepository campaignRepository;
     private final AdRepository adRepository;
@@ -50,7 +49,7 @@ public class CampaignController {
         User user = currentUserService.resolve(auth);
         Campaign campaign = new Campaign();
         campaign.setName((String) body.getOrDefault("name", ""));
-        campaign.setStatus("draft");
+        campaign.setStatus(CampaignStatus.DRAFT);
         Object budgetRaw = body.get("budget");
         campaign.setBudget(budgetRaw != null ? new BigDecimal(budgetRaw.toString()) : BigDecimal.ZERO);
         campaign.setAdvertiserId(user.getId());
@@ -126,10 +125,11 @@ public class CampaignController {
     @PatchMapping("/{id}/status")
     @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
     public ResponseEntity<?> updateStatus(@PathVariable Long id, @RequestBody Map<String, String> body, Authentication auth) {
-        String newStatus = body.get("status");
-        if (newStatus == null || !VALID_STATUSES.contains(newStatus)) {
+        String raw = body.get("status");
+        CampaignStatus newStatus = parseStatus(raw);
+        if (newStatus == null) {
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", "status must be one of: " + VALID_STATUSES));
+                    .body(Map.of("error", "status must be one of: " + Arrays.toString(CampaignStatus.values())));
         }
         return campaignRepository.findById(id).map(campaign -> {
             if (!canAccess(campaign, auth)) {
@@ -140,6 +140,17 @@ public class CampaignController {
             log.info("Campaign {} status updated to {}", id, newStatus);
             return ResponseEntity.ok(Map.of("campaignId", id, "status", newStatus));
         }).orElse(ResponseEntity.notFound().build());
+    }
+
+    private CampaignStatus parseStatus(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return CampaignStatus.valueOf(raw.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     @GetMapping("/{id}/analytics")

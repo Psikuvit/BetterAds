@@ -3,6 +3,7 @@ package me.psikuvit.betterads.worker;
 import lombok.extern.slf4j.Slf4j;
 import me.psikuvit.betterads.embed.EmbedService;
 import me.psikuvit.betterads.features.FeatureProcessingService;
+import me.psikuvit.betterads.storage.dto.AdStatus;
 import me.psikuvit.betterads.storage.entities.Ad;
 import me.psikuvit.betterads.storage.repositories.AdRepository;
 import org.springframework.stereotype.Service;
@@ -32,7 +33,7 @@ public class AdLifecycleService {
      * and embed-link generation the same way.
      */
     public void moveToLive(Ad ad) {
-        ad.setStatus("processing");
+        ad.setStatus(AdStatus.PROCESSING);
         adRepository.save(ad);
         eventPublisher.publish(ad.getId(), ad.getStatus());
         log.info("Ad ID: {} status updated to processing", ad.getId());
@@ -40,7 +41,7 @@ public class AdLifecycleService {
         featureProcessingService.process(ad.getId().toString(), ad.getStorageKey(), ad.getTargetLocale());
         log.info("Feature processing completed for Ad ID: {}", ad.getId());
 
-        ad.setStatus("live");
+        ad.setStatus(AdStatus.LIVE);
         adRepository.save(ad);
         eventPublisher.publish(ad.getId(), ad.getStatus());
         log.info("Ad ID: {} status updated to live", ad.getId());
@@ -50,7 +51,7 @@ public class AdLifecycleService {
     }
 
     public void reject(Ad ad) {
-        ad.setStatus("rejected");
+        ad.setStatus(AdStatus.REJECTED);
         adRepository.save(ad);
         eventPublisher.publish(ad.getId(), ad.getStatus());
         log.info("Ad ID: {} status updated to rejected", ad.getId());

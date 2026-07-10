@@ -8,6 +8,7 @@ import me.psikuvit.betterads.auth.CurrentUserService;
 import me.psikuvit.betterads.queue.ProcessingQueueService;
 import me.psikuvit.betterads.storage.StorageService;
 import me.psikuvit.betterads.storage.UploadPolicy;
+import me.psikuvit.betterads.storage.dto.AdStatus;
 import me.psikuvit.betterads.storage.entities.Ad;
 import me.psikuvit.betterads.storage.entities.Campaign;
 import me.psikuvit.betterads.storage.entities.User;
@@ -89,7 +90,7 @@ public class UploadController {
         ad.setTitle(request.title());
         ad.setStorageKey(request.storageKey());
         ad.setTargetLocale(request.targetLocale() != null ? request.targetLocale() : "en");
-        ad.setStatus("pending");
+        ad.setStatus(AdStatus.PENDING);
 
         ad = adRepository.save(ad);
         log.info("Ad record created with ID: {} and status: {}", ad.getId(), ad.getStatus());

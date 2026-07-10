@@ -1,6 +1,7 @@
 package me.psikuvit.betterads.worker;
 
 import lombok.extern.slf4j.Slf4j;
+import me.psikuvit.betterads.storage.dto.AdStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -33,7 +34,7 @@ public class AdStatusEventPublisher {
         return emitter;
     }
 
-    public void publish(Long adId, String status) {
+    public void publish(Long adId, AdStatus status) {
         List<SseEmitter> emitters = emittersByAdId.get(adId);
         if (emitters == null || emitters.isEmpty()) {
             return;

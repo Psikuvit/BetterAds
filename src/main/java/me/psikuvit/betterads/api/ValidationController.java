@@ -1,6 +1,7 @@
 package me.psikuvit.betterads.api;
 
 import lombok.extern.slf4j.Slf4j;
+import me.psikuvit.betterads.storage.dto.AdStatus;
 import me.psikuvit.betterads.storage.repositories.AdRepository;
 import me.psikuvit.betterads.worker.AdLifecycleService;
 import me.psikuvit.betterads.worker.AdStatusEventPublisher;
@@ -45,7 +46,7 @@ public class ValidationController {
     public ResponseEntity<?> validationStatus(@PathVariable Long id) {
         return adRepository.findById(id)
                 .map(ad -> {
-                    boolean inHumanReview = "flagged".equals(ad.getStatus());
+                    boolean inHumanReview = ad.getStatus() == AdStatus.FLAGGED;
                     log.info("Validation status queried for adId={}: status={}", id, ad.getStatus());
                     return ResponseEntity.ok(Map.of(
                             "adId", id,
@@ -65,7 +66,7 @@ public class ValidationController {
                     .body(Map.of("error", "decision must be one of: " + VALID_DECISIONS));
         }
         return adRepository.findById(id).map(ad -> {
-            if (!"flagged".equals(ad.getStatus())) {
+            if (ad.getStatus() != AdStatus.FLAGGED) {
                 return ResponseEntity.badRequest()
                         .body(Map.of("error", "ad is not pending human review (status=" + ad.getStatus() + ")"));
             }

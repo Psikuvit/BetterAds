@@ -1,6 +1,7 @@
 package me.psikuvit.betterads.worker;
 
 import lombok.extern.slf4j.Slf4j;
+import me.psikuvit.betterads.storage.dto.AdStatus;
 import me.psikuvit.betterads.storage.repositories.AdRepository;
 import me.psikuvit.betterads.validation.dto.ValidationResult;
 import me.psikuvit.betterads.validation.ValidationService;
@@ -39,7 +40,7 @@ public class WorkerConsumer {
 
         adRepository.findById(adId).ifPresent(ad -> {
             try {
-                ad.setStatus("validating");
+                ad.setStatus(AdStatus.VALIDATING);
                 adRepository.save(ad);
                 eventPublisher.publish(adId, ad.getStatus());
                 log.info("Ad ID: {} status updated to validating", adId);
@@ -50,7 +51,7 @@ public class WorkerConsumer {
                 if (result == ValidationResult.APPROVED) {
                     adLifecycleService.moveToLive(ad);
                 } else if (result == ValidationResult.FLAGGED) {
-                    ad.setStatus("flagged");
+                    ad.setStatus(AdStatus.FLAGGED);
                     adRepository.save(ad);
                     eventPublisher.publish(adId, ad.getStatus());
                     log.info("Ad ID: {} status updated to flagged (pending human review)", adId);
@@ -58,7 +59,7 @@ public class WorkerConsumer {
                     adLifecycleService.reject(ad);
                 }
             } catch (Exception ex) {
-                ad.setStatus("failed");
+                ad.setStatus(AdStatus.FAILED);
                 adRepository.save(ad);
                 eventPublisher.publish(adId, ad.getStatus());
                 log.error("Worker failed for adId={} : {}", adId, ex.getMessage(), ex);

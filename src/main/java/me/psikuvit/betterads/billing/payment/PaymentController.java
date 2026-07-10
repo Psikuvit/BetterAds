@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.psikuvit.betterads.auth.CurrentUserService;
 import me.psikuvit.betterads.billing.payment.dto.FundCampaignRequest;
 import me.psikuvit.betterads.fraud.PaymentRateLimiter;
+import me.psikuvit.betterads.storage.dto.PaymentStatus;
 import me.psikuvit.betterads.storage.entities.Campaign;
 import me.psikuvit.betterads.storage.entities.Payment;
 import me.psikuvit.betterads.storage.entities.User;
@@ -99,7 +100,7 @@ public class PaymentController {
             payment.setClientIdempotencyKey(idempotencyKey);
             payment.setAmount(request.amount());
             payment.setCurrency("usd");
-            payment.setStatus("pending");
+            payment.setStatus(PaymentStatus.PENDING);
             paymentRepository.save(payment);
 
             log.info("Created PaymentIntent {} for campaign {} amount {}", intent.getId(), campaign.getId(), request.amount());
@@ -157,7 +158,7 @@ public class PaymentController {
     private void handleSucceeded(Event event) {
         withPaymentIntent(event, intent ->
                 paymentRepository.findByStripePaymentIntentId(intent.getId()).ifPresent(payment -> {
-                    if ("succeeded".equals(payment.getStatus())) {
+                    if (payment.getStatus() == PaymentStatus.SUCCEEDED) {
                         return;
                     }
                     String expectedCampaignId = intent.getMetadata() != null ? intent.getMetadata().get("campaignId") : null;
@@ -167,7 +168,7 @@ public class PaymentController {
                         return;
                     }
 
-                    payment.setStatus("succeeded");
+                    payment.setStatus(PaymentStatus.SUCCEEDED);
                     paymentRepository.save(payment);
 
                     // Locked read: serializes against concurrent ad-view spend
@@ -185,8 +186,8 @@ public class PaymentController {
     private void handleFailed(Event event) {
         withPaymentIntent(event, intent ->
                 paymentRepository.findByStripePaymentIntentId(intent.getId()).ifPresent(payment -> {
-                    if (!"succeeded".equals(payment.getStatus())) {
-                        payment.setStatus("failed");
+                    if (payment.getStatus() != PaymentStatus.SUCCEEDED) {
+                        payment.setStatus(PaymentStatus.FAILED);
                         paymentRepository.save(payment);
                         log.info("Payment {} marked failed", intent.getId());
                     }

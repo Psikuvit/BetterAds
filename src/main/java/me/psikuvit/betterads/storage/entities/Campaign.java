@@ -1,6 +1,8 @@
 package me.psikuvit.betterads.storage.entities;
 
 import jakarta.persistence.*;
+import me.psikuvit.betterads.storage.dto.CampaignStatus;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 
@@ -20,7 +22,8 @@ public class Campaign {
     private BigDecimal spent = BigDecimal.ZERO;
 
     // draft -> active -> paused -> completed
-    private String status = "active";
+    @Enumerated(EnumType.STRING)
+    private CampaignStatus status = CampaignStatus.ACTIVE;
 
     private Instant createdAt = Instant.now();
 
@@ -35,8 +38,8 @@ public class Campaign {
     public void setBudget(BigDecimal budget) { this.budget = budget; }
     public BigDecimal getSpent() { return spent; }
     public void setSpent(BigDecimal spent) { this.spent = spent; }
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
+    public CampaignStatus getStatus() { return status; }
+    public void setStatus(CampaignStatus status) { this.status = status; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }
