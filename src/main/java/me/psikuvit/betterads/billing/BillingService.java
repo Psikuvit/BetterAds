@@ -19,6 +19,8 @@ public class BillingService {
 
     private final Map<String, BigDecimal> rates = new ConcurrentHashMap<>();
 
+    private final Map<String, BigDecimal> featureSurcharges = new ConcurrentHashMap<>();
+
     private final ViewRepository viewRepository;
     private final AdVersionRepository adVersionRepository;
     private final AdRepository adRepository;
@@ -37,10 +39,30 @@ public class BillingService {
         rates.put("US", new BigDecimal("0.0015"));
         rates.put("GB", new BigDecimal("0.0014"));
         rates.put("DE", new BigDecimal("0.0013"));
+
+        // e.g. default 0.001 + 0.001 = 0.002 per view for HuggingFace-dubbed variants
+        featureSurcharges.put("translation", new BigDecimal("0.001"));
     }
 
     public BigDecimal rateFor(String locale) {
         return rates.getOrDefault(locale, rates.get("default"));
+    }
+
+    /**
+     * Locale rate plus the surcharge for the given premium feature (if any).
+     * {@code feature} is null for versions from free/dev AI providers.
+     */
+    public BigDecimal rateFor(String locale, String feature) {
+        BigDecimal base = rateFor(locale);
+        if (feature == null) {
+            return base;
+        }
+        BigDecimal surcharge = featureSurcharges.get(feature);
+        if (surcharge == null) {
+            log.warn("No billing surcharge configured for feature={}, charging base rate only", feature);
+            return base;
+        }
+        return base.add(surcharge);
     }
 
     public BigDecimal calculateCharge(String locale, long views) {
@@ -54,7 +76,7 @@ public class BillingService {
                         // Locked for the rest of this transaction: serializes against
                         // concurrent recordView calls and the payment webhook's budget credit.
                         campaignRepository.findByIdForUpdate(ad.getCampaignId()).map(campaign -> {
-                                    BigDecimal cost = rateFor(adVersion.getLocale());
+                                    BigDecimal cost = rateFor(adVersion.getLocale(), adVersion.getFeature());
                                     BigDecimal newSpent = campaign.getSpent().add(cost);
 
                                     if (newSpent.compareTo(campaign.getBudget()) > 0) {

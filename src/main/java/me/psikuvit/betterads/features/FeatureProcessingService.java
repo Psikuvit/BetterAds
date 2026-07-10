@@ -41,8 +41,9 @@ public class FeatureProcessingService {
             v.setAdId(Long.valueOf(adId));
             v.setLocale(targetLocale == null ? "" : targetLocale);
             v.setStorageKey(translatedKey);
+            v.setFeature(translationService.featureName());
             adVersionRepository.save(v);
-            log.info("Ad version persisted for adId: {} with locale: {}", adId, targetLocale);
+            log.info("Ad version persisted for adId: {} with locale: {}, feature: {}", adId, targetLocale, v.getFeature());
         }
     }
 }

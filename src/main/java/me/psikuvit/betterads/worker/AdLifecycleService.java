@@ -40,7 +40,15 @@ public class AdLifecycleService {
         eventPublisher.publish(ad.getId(), ad.getStatus());
         log.info("Ad ID: {} status updated to processing", ad.getId());
 
-        featureProcessingService.process(ad.getId().toString(), ad.getStorageKey(), locales);
+        try {
+            featureProcessingService.process(ad.getId().toString(), ad.getStorageKey(), locales);
+        } catch (RuntimeException e) {
+            ad.setStatus(AdStatus.AWAITING_FEATURES);
+            adRepository.save(ad);
+            eventPublisher.publish(ad.getId(), ad.getStatus());
+            log.warn("Feature processing failed for Ad ID: {}, reverted to awaiting_features: {}", ad.getId(), e.getMessage());
+            throw e;
+        }
         log.info("Feature processing completed for Ad ID: {}", ad.getId());
 
         ad.setStatus(AdStatus.LIVE);
