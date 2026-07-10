@@ -54,8 +54,4 @@ public class AuthController {
         String token = tokenProvider.generateToken(user.getEmail(), user.getRole());
         return ResponseEntity.status(HttpStatus.CREATED).body(new LoginResponse(token, user.getEmail(), user.getRole()));
     }
-
-    record LoginRequest(String email, String password) {}
-    record RegisterRequest(String email, String password, String role) {}
-    record LoginResponse(String token, String email, String role) {}
 }
