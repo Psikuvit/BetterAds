@@ -1,5 +1,6 @@
 package me.psikuvit.betterads.links;
 
+import me.psikuvit.betterads.storage.entities.AdVersion;
 import me.psikuvit.betterads.storage.repo.AdVersionRepository;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -32,7 +33,7 @@ public class LinkController {
 
         List<String> variants = adVersionRepository.findByAdId(adId)
                 .stream()
-                .map(v -> v.getStorageKey())
+                .map(AdVersion::getStorageKey)
                 .collect(Collectors.toList());
 
         if (!variants.isEmpty()) {
