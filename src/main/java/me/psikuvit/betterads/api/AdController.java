@@ -3,12 +3,14 @@ package me.psikuvit.betterads.api;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import me.psikuvit.betterads.billing.BillingService;
+import me.psikuvit.betterads.embed.EmbedService;
 import me.psikuvit.betterads.fraud.FraudService;
 import me.psikuvit.betterads.links.LinkService;
 import me.psikuvit.betterads.storage.entities.AdVersion;
 import me.psikuvit.betterads.storage.repositories.AdVersionRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -23,13 +25,16 @@ public class AdController {
     private final FraudService fraudService;
     private final BillingService billingService;
     private final AdVersionRepository adVersionRepository;
+    private final EmbedService embedService;
 
     public AdController(LinkService linkService, FraudService fraudService,
-                        BillingService billingService, AdVersionRepository adVersionRepository) {
+                        BillingService billingService, AdVersionRepository adVersionRepository,
+                        EmbedService embedService) {
         this.linkService = linkService;
         this.fraudService = fraudService;
         this.billingService = billingService;
         this.adVersionRepository = adVersionRepository;
+        this.embedService = embedService;
     }
 
     @GetMapping("/{id}")
@@ -63,6 +68,18 @@ public class AdController {
         List<String> keys = variants.stream().map(AdVersion::getStorageKey).toList();
         log.info("Served adId={} to ip={}, variants={}", id, ip, keys.size());
         return ResponseEntity.ok(Map.of("adId", id, "variants", keys));
+    }
+
+    @GetMapping("/{id}/link")
+    @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
+    public ResponseEntity<?> getLink(@PathVariable Long id) {
+        return embedService.findByAdId(id)
+                .map(link -> {
+                    String url = embedService.embedUrl(link.getToken());
+                    String snippet = embedService.embedSnippet(link.getToken());
+                    return ResponseEntity.ok(Map.of("embedUrl", url, "embedSnippet", snippet, "token", link.getToken()));
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 
     private String extractIp(HttpServletRequest request) {

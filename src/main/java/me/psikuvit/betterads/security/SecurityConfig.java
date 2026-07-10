@@ -59,6 +59,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(authz -> authz
                 .requestMatchers("/auth/**").permitAll()
                 .requestMatchers("/actuator/**").permitAll()
+                .requestMatchers("/embed/**").permitAll()
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/ads/*").permitAll() // public ad serving
                 .anyRequest().authenticated()
             )
