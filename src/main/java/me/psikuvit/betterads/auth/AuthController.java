@@ -1,57 +1,27 @@
 package me.psikuvit.betterads.auth;
 
-import me.psikuvit.betterads.storage.entities.User;
-import me.psikuvit.betterads.storage.repo.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/auth")
 public class AuthController {
-    private final UserRepository userRepository;
-    private final JwtTokenProvider tokenProvider;
-    private final PasswordEncoder passwordEncoder;
+    private final AuthService authService;
 
-    public AuthController(UserRepository userRepository, JwtTokenProvider tokenProvider, PasswordEncoder passwordEncoder) {
-        this.userRepository = userRepository;
-        this.tokenProvider = tokenProvider;
-        this.passwordEncoder = passwordEncoder;
+    public AuthController(AuthService authService) {
+        this.authService = authService;
     }
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest request) {
-        Optional<User> user = userRepository.findByEmail(request.email());
-        if (user.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid email or password");
-        }
-
-        User u = user.get();
-        if (!passwordEncoder.matches(request.password(), u.getPasswordHash())) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid email or password");
-        }
-
-        String token = tokenProvider.generateToken(u.getEmail(), u.getRole());
-        return ResponseEntity.ok(new LoginResponse(token, u.getEmail(), u.getRole()));
+    public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest request) {
+        LoginResponse response = authService.login(request.email(), request.password());
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
-        if (userRepository.findByEmail(request.email()).isPresent()) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body("Email already registered");
-        }
-
-        User user = new User(
-                request.email(),
-                passwordEncoder.encode(request.password()),
-                request.role() != null ? request.role() : "ADVERTISER"
-        );
-        userRepository.save(user);
-
-        String token = tokenProvider.generateToken(user.getEmail(), user.getRole());
-        return ResponseEntity.status(HttpStatus.CREATED).body(new LoginResponse(token, user.getEmail(), user.getRole()));
+    public ResponseEntity<LoginResponse> register(@RequestBody RegisterRequest request) {
+        LoginResponse response = authService.register(request.email(), request.password(), request.role());
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 }
