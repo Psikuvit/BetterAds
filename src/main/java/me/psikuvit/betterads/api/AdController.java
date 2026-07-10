@@ -9,6 +9,7 @@ import me.psikuvit.betterads.fraud.FraudService;
 import me.psikuvit.betterads.fraud.ViewTokenService;
 import me.psikuvit.betterads.links.LinkService;
 import me.psikuvit.betterads.security.ClientIpResolver;
+import me.psikuvit.betterads.storage.StorageService;
 import me.psikuvit.betterads.storage.entities.Ad;
 import me.psikuvit.betterads.storage.entities.AdVersion;
 import me.psikuvit.betterads.storage.repositories.AdRepository;
@@ -18,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -35,11 +37,13 @@ public class AdController {
     private final EmbedService embedService;
     private final ViewTokenService viewTokenService;
     private final ClientIpResolver clientIpResolver;
+    private final StorageService storageService;
 
     public AdController(LinkService linkService, FraudService fraudService,
                         BillingService billingService, AdRepository adRepository,
                         AdVersionRepository adVersionRepository, EmbedService embedService,
-                        ViewTokenService viewTokenService, ClientIpResolver clientIpResolver) {
+                        ViewTokenService viewTokenService, ClientIpResolver clientIpResolver,
+                        StorageService storageService) {
         this.linkService = linkService;
         this.fraudService = fraudService;
         this.billingService = billingService;
@@ -48,6 +52,7 @@ public class AdController {
         this.embedService = embedService;
         this.viewTokenService = viewTokenService;
         this.clientIpResolver = clientIpResolver;
+        this.storageService = storageService;
     }
 
     @GetMapping("/{id}")
@@ -59,10 +64,6 @@ public class AdController {
         String deviceInfo = request.getHeader("User-Agent");
         boolean suspiciousUserAgent = deviceInfo == null || deviceInfo.isBlank();
 
-        // A valid one-time view token proves this came from a genuine widget load and
-        // can't be replayed, so it's trusted in place of the IP-rate-limit fallback check —
-        // unless the request also has no User-Agent, in which case it doesn't get the free
-        // pass and is still subject to the normal fraud check (soft signal, not a hard block).
         boolean trustedByToken = !suspiciousUserAgent && viewTokenService.validateAndConsume(vt, id);
         if (!trustedByToken && fraudService.isLikelyFraud(ip)) {
             log.warn("Blocked fraudulent impression for adId={} from ip={}", id, ip);
@@ -90,9 +91,15 @@ public class AdController {
         AdVersion best = variants.getFirst();
         billingService.recordView(best.getId(), ip, deviceInfo);
 
-        List<String> keys = variants.stream().map(AdVersion::getStorageKey).toList();
-        log.info("Served adId={} to ip={}, variants={}", id, ip, keys.size());
-        return ResponseEntity.ok(Map.of("adId", id, "variants", keys));
+        // Signed URLs, not raw storage keys — the browser can't resolve a bare S3 key.
+        // Longer expiry than the upload presign since this is read-only playback content
+        // and a mid-view expiry would break the video.
+        List<String> urls = variants.stream()
+                .map(v -> storageService.presignGetUrl(v.getStorageKey(), Duration.ofHours(2)))
+                .toList();
+
+        log.info("Served adId={} to ip={}, variants={}", id, ip, urls.size());
+        return ResponseEntity.ok(Map.of("adId", id, "variants", urls));
     }
 
     @GetMapping("/{id}/link")

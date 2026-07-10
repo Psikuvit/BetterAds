@@ -33,6 +33,14 @@ public class StorageService {
                 .build();
     }
 
+    public String presignGetUrl(String key, Duration duration) {
+        Date expiration = new Date(System.currentTimeMillis() + duration.toMillis());
+        GeneratePresignedUrlRequest req = new GeneratePresignedUrlRequest(bucket, key)
+                .withMethod(HttpMethod.GET)
+                .withExpiration(expiration);
+        return s3.generatePresignedUrl(req).toString();
+    }
+
     public String presignPutUrl(String key, String contentType, Duration duration) {
         Date expiration = new Date(System.currentTimeMillis() + duration.toMillis());
         GeneratePresignedUrlRequest req = new GeneratePresignedUrlRequest(bucket, key)
