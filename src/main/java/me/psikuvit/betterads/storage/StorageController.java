@@ -1,5 +1,6 @@
 package me.psikuvit.betterads.storage;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,6 +20,7 @@ public class StorageController {
     }
 
     @PostMapping("/presign")
+    @PreAuthorize("hasRole('ADVERTISER')")
     public Map<String, String> presign(@RequestBody Map<String, String> body) {
         String key = body.get("key");
         String contentType = body.getOrDefault("contentType", "application/octet-stream");

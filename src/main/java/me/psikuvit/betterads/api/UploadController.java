@@ -3,6 +3,7 @@ package me.psikuvit.betterads.api;
 import me.psikuvit.betterads.queue.ProcessingQueueService;
 import me.psikuvit.betterads.storage.entities.Ad;
 import me.psikuvit.betterads.storage.repo.AdRepository;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,6 +24,7 @@ public class UploadController {
     }
 
     @PostMapping("/upload/confirm")
+    @PreAuthorize("hasRole('ADVERTISER')")
     public Map<String, Object> confirmUpload(@RequestBody Map<String, Object> payload) {
         // Validate and persist ad record
         Long campaignId = payload.get("campaignId") != null ? Long.valueOf(payload.get("campaignId").toString()) : null;

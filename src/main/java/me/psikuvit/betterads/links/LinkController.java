@@ -1,6 +1,7 @@
 package me.psikuvit.betterads.links;
 
 import me.psikuvit.betterads.storage.repo.AdVersionRepository;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,6 +24,7 @@ public class LinkController {
     }
 
     @GetMapping("/{adId}")
+    @PreAuthorize("hasAnyRole('PUBLISHER', 'ADVERTISER')")
     public List<String> resolve(@PathVariable Long adId) {
         String cacheKey = "ad:variants:" + adId;
         List<String> cached = redis.opsForList().range(cacheKey, 0, -1);
