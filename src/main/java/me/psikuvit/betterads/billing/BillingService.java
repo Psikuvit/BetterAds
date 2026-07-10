@@ -51,7 +51,9 @@ public class BillingService {
     public void recordView(Long adVersionId, String ip, String deviceInfo) {
         adVersionRepository.findById(adVersionId).map(adVersion ->
                 adRepository.findById(adVersion.getAdId()).map(ad ->
-                        campaignRepository.findById(ad.getCampaignId()).map(campaign -> {
+                        // Locked for the rest of this transaction: serializes against
+                        // concurrent recordView calls and the payment webhook's budget credit.
+                        campaignRepository.findByIdForUpdate(ad.getCampaignId()).map(campaign -> {
                                     BigDecimal cost = rateFor(adVersion.getLocale());
                                     BigDecimal newSpent = campaign.getSpent().add(cost);
 

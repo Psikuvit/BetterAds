@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -96,8 +97,12 @@ public class CampaignController {
 
     @PatchMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
+    @Transactional
     public ResponseEntity<?> update(@PathVariable Long id, @RequestBody Map<String, Object> body, Authentication auth) {
-        return campaignRepository.findById(id).map(campaign -> {
+        // Locked read: held for the rest of this transaction so this budget
+        // edit can't interleave with a concurrent recordView spend or a
+        // payment webhook credit on the same campaign.
+        return campaignRepository.findByIdForUpdate(id).map(campaign -> {
             if (!canAccess(campaign, auth)) {
                 return forbidden();
             }
