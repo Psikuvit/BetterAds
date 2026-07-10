@@ -38,3 +38,9 @@ frontend_prompt.txt
 work_pipeline.puml
 betterads.log
 .gitignore
+
+# Real secrets go here, never in application.properties. Only .env.example
+# (the checked-in template) should ever be tracked.
+.env
+.env.*
+!.env.example
