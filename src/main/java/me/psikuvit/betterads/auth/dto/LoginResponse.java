@@ -1,3 +1,5 @@
 package me.psikuvit.betterads.auth.dto;
 
-public record LoginResponse(String token, String email, String role) {}
+import me.psikuvit.betterads.storage.dto.Role;
+
+public record LoginResponse(String token, String email, Role role) {}
