@@ -66,7 +66,7 @@ public class EmbedService {
                     * { margin: 0; padding: 0; box-sizing: border-box; }
                     body { background: #000; display: flex; align-items: center;
                            justify-content: center; width: 100vw; height: 100vh; }
-                    video { width: 100%; height: 100%; object-fit: contain; }
+                    video { width: 100%%; height: 100%%; object-fit: contain; }
                     #error { color: #fff; font-family: sans-serif; font-size: 14px; }
                   </style>
                 </head>
