@@ -1,0 +1,106 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: betterads
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-pass}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/betterads
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-pass}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_DATA_REDIS_HOST: redis
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      APP_S3_BUCKET: ${APP_S3_BUCKET:-betterads-local-dev}
+      APP_S3_REGION: ${APP_S3_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      APP_AUTH_JWT_SECRET: ${APP_AUTH_JWT_SECRET:-my-super-secret-jwt-key-change-this-in-production}
+      APP_STRIPE_SECRET_KEY: ${APP_STRIPE_SECRET_KEY:-}
+      APP_STRIPE_WEBHOOK_SECRET: ${APP_STRIPE_WEBHOOK_SECRET:-}
+      APP_AI_PROVIDER: ${APP_AI_PROVIDER:-mock}
+      APP_CORS_ALLOWED_ORIGINS: ${APP_CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:4200}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # Optional: runs WorkerApplication (no embedded web server, just the
+  # ad-processing RabbitMQ consumer) as a separate, independently scalable
+  # process — the split the codebase's two entrypoints were built for, but
+  # never wired up. Not started by default; opt in with:
+  #   docker compose --profile scale-out up
+  worker:
+    build: .
+    profiles: ["scale-out"]
+    entrypoint:
+      - java
+      - -Dloader.main=me.psikuvit.betterads.WorkerApplication
+      - -cp
+      - app.jar
+      - org.springframework.boot.loader.launch.PropertiesLauncher
+      - --spring.main.web-application-type=none
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/betterads
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-pass}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_DATA_REDIS_HOST: redis
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      APP_S3_BUCKET: ${APP_S3_BUCKET:-betterads-local-dev}
+      APP_S3_REGION: ${APP_S3_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      APP_AUTH_JWT_SECRET: ${APP_AUTH_JWT_SECRET:-my-super-secret-jwt-key-change-this-in-production}
+      APP_AI_PROVIDER: ${APP_AI_PROVIDER:-mock}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
+  rabbitmq_data:
