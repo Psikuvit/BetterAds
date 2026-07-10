@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import me.psikuvit.betterads.security.ClientIpResolver;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
@@ -14,6 +15,7 @@ import java.io.IOException;
 import java.time.Instant;
 
 @Component
+@Slf4j
 public class RateLimitFilter extends OncePerRequestFilter {
     private final RateLimitService rateLimitService;
     private final RateLimitProperties properties;
@@ -35,6 +37,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         String key = extractClientKey(request);
         if (!rateLimitService.isAllowed(key)) {
+            log.warn("Rate limit exceeded for key={} on {} {}", key, request.getMethod(), request.getRequestURI());
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.setContentType("application/json");
             // Hand-built JSON (matches ErrorResponse's shape) rather than an injected

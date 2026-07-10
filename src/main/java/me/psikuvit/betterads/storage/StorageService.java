@@ -8,6 +8,7 @@ import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.S3Object;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.stereotype.Service;
@@ -17,6 +18,7 @@ import java.util.Date;
 import java.util.Optional;
 
 @Service
+@Slf4j
 public class StorageService {
 
     private final AmazonS3 s3;
@@ -36,6 +38,7 @@ public class StorageService {
     }
 
     public String presignGetUrl(String key, Duration duration) {
+        log.debug("Presigning GET URL for key={}, expiresIn={}", key, duration);
         Date expiration = new Date(System.currentTimeMillis() + duration.toMillis());
         GeneratePresignedUrlRequest req = new GeneratePresignedUrlRequest(bucket, key)
                 .withMethod(HttpMethod.GET)
@@ -44,6 +47,7 @@ public class StorageService {
     }
 
     public String presignPutUrl(String key, String contentType, Duration duration) {
+        log.debug("Presigning PUT URL for key={}, contentType={}, expiresIn={}", key, contentType, duration);
         Date expiration = new Date(System.currentTimeMillis() + duration.toMillis());
         GeneratePresignedUrlRequest req = new GeneratePresignedUrlRequest(bucket, key)
                 .withMethod(HttpMethod.PUT)
@@ -56,8 +60,11 @@ public class StorageService {
 
     public Optional<ObjectMetadata> getObjectMetadata(String key) {
         try {
-            return Optional.of(s3.getObjectMetadata(bucket, key));
+            ObjectMetadata metadata = s3.getObjectMetadata(bucket, key);
+            log.debug("Fetched metadata for key={}: size={}, contentType={}", key, metadata.getContentLength(), metadata.getContentType());
+            return Optional.of(metadata);
         } catch (AmazonS3Exception e) {
+            log.warn("Failed to fetch S3 metadata for key={}: {}", key, e.getMessage());
             return Optional.empty();
         }
     }
@@ -66,6 +73,7 @@ public class StorageService {
     // app.upload.max-size-bytes (200MB by default), too large to hold
     // wholesale in memory just to forward it to a moderation service.
     public InputStreamResource downloadObject(String key) {
+        log.info("Downloading object from S3: key={}", key);
         S3Object obj = s3.getObject(bucket, key);
         return new InputStreamResource(obj.getObjectContent());
     }

@@ -48,6 +48,7 @@ public class HuggingFaceModerationService implements ModerationService {
 
     public HuggingFaceModerationService(StorageService storageService,
             @Value("${app.ai.huggingface.space-url}") String spaceUrl) {
+        log.info("[huggingface] HuggingFaceModerationService initialized with spaceUrl={}", spaceUrl);
         this.storageService = storageService;
         HttpClient httpClient = HttpClient.create().responseTimeout(TIMEOUT);
         this.webClient = WebClient.builder()
@@ -58,6 +59,8 @@ public class HuggingFaceModerationService implements ModerationService {
 
     @Override
     public ValidationResult moderate(String storageKey) {
+        long start = System.currentTimeMillis();
+        log.info("[huggingface] moderate() called for key={}", storageKey);
         try {
             String filename = storageKey.substring(storageKey.lastIndexOf('/') + 1);
             InputStreamResource file = storageService.downloadObject(storageKey);
@@ -66,23 +69,28 @@ public class HuggingFaceModerationService implements ModerationService {
             String eventId = submit(uploadedPath, filename);
             String decision = awaitDecision(eventId);
 
-            return switch (decision) {
+            long elapsedMs = System.currentTimeMillis() - start;
+            ValidationResult result = switch (decision) {
                 case "accepted" -> ValidationResult.APPROVED;
                 case "refused" -> ValidationResult.REJECTED;
                 default -> {
-                    log.warn("Unexpected decision '{}' from HuggingFace moderation for key={}", decision, storageKey);
+                    log.warn("[huggingface] Unexpected decision '{}' from HuggingFace moderation for key={}", decision, storageKey);
                     yield ValidationResult.FLAGGED;
                 }
             };
+            log.info("[huggingface] moderate() result={} (raw decision='{}') for key={} in {}ms", result, decision, storageKey, elapsedMs);
+            return result;
         } catch (Exception e) {
+            long elapsedMs = System.currentTimeMillis() - start;
             // A technical failure isn't a moderation signal - flag for human
             // review rather than silently auto-approving or auto-rejecting.
-            log.warn("HuggingFace moderation call failed for key={}: {}", storageKey, e.getMessage(), e);
+            log.warn("[huggingface] moderation call failed for key={} after {}ms: {}", storageKey, elapsedMs, e.getMessage(), e);
             return ValidationResult.FLAGGED;
         }
     }
 
     private String upload(InputStreamResource file, String filename) throws Exception {
+        log.debug("[huggingface] uploading file '{}' to /gradio_api/upload", filename);
         MultipartBodyBuilder builder = new MultipartBodyBuilder();
         builder.part("files", file).filename(filename);
 
@@ -94,12 +102,15 @@ public class HuggingFaceModerationService implements ModerationService {
                 .block(TIMEOUT);
         String[] paths = objectMapper.readValue(response, String[].class);
         if (paths.length == 0) {
+            log.warn("[huggingface] upload response contained no file path for filename={}: {}", filename, response);
             throw new IllegalStateException("Upload response contained no file path: " + response);
         }
+        log.debug("[huggingface] uploaded '{}' -> path={}", filename, paths[0]);
         return paths[0];
     }
 
     private String submit(String uploadedPath, String filename) throws Exception {
+        log.debug("[huggingface] submitting call to /gradio_api/call/moderate for uploadedPath={}", uploadedPath);
         Map<String, Object> fileData = Map.of(
                 "path", uploadedPath,
                 "meta", Map.of("_type", "gradio.FileData"),
@@ -117,12 +128,16 @@ public class HuggingFaceModerationService implements ModerationService {
         JsonNode json = objectMapper.readTree(response);
         JsonNode eventId = json.get("event_id");
         if (eventId == null) {
+            log.warn("[huggingface] submit response contained no event_id for uploadedPath={}: {}", uploadedPath, response);
             throw new IllegalStateException("Submit response contained no event_id: " + response);
         }
+        log.debug("[huggingface] submitted, eventId={}", eventId.asText());
         return eventId.asText();
     }
 
     private String awaitDecision(String eventId) throws Exception {
+        long start = System.currentTimeMillis();
+        log.debug("[huggingface] awaiting SSE 'complete' event for eventId={}", eventId);
         ServerSentEvent<String> complete = webClient.get()
                 .uri("/gradio_api/call/moderate/{eventId}", eventId)
                 .accept(MediaType.TEXT_EVENT_STREAM)
@@ -133,9 +148,12 @@ public class HuggingFaceModerationService implements ModerationService {
                 .block(TIMEOUT);
 
         if (complete == null || complete.data() == null) {
+            log.warn("[huggingface] no complete event received for eventId={} after {}ms", eventId, System.currentTimeMillis() - start);
             throw new IllegalStateException("No complete event received for event_id=" + eventId);
         }
         JsonNode result = objectMapper.readTree(complete.data());
-        return result.get(0).asText("").trim().toLowerCase();
+        String decision = result.get(0).asText("").trim().toLowerCase();
+        log.debug("[huggingface] decision='{}' for eventId={} after {}ms", decision, eventId, System.currentTimeMillis() - start);
+        return decision;
     }
 }

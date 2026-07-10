@@ -39,6 +39,7 @@ public class AnalyticsController {
     @PreAuthorize("hasRole('ADVERTISER')")
     public ResponseEntity<?> advertiserSummary(Authentication auth) {
         User user = currentUserService.resolve(auth);
+        log.info("GET /api/analytics/advertiser called for userId={}", user.getId());
         List<Campaign> campaigns = campaignRepository.findByAdvertiserId(user.getId());
 
         BigDecimal totalSpent = campaigns.stream().map(Campaign::getSpent).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -47,6 +48,8 @@ public class AnalyticsController {
         Map<CampaignStatus, Long> campaignsByStatus = campaigns.stream()
                 .collect(Collectors.groupingBy(Campaign::getStatus, Collectors.counting()));
 
+        log.debug("Advertiser summary for userId={}: campaignCount={}, totalSpent={}, totalViews={}",
+                user.getId(), campaigns.size(), totalSpent, totalViews);
         return ResponseEntity.ok(Map.of(
                 "campaignCount", campaigns.size(),
                 "campaignsByStatus", campaignsByStatus,

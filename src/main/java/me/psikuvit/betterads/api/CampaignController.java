@@ -61,6 +61,7 @@ public class CampaignController {
     @GetMapping
     @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
     public Page<Campaign> list(Authentication auth, Pageable pageable) {
+        log.debug("GET /api/campaigns called by {}", auth.getName());
         if (currentUserService.isAdmin(auth)) {
             return campaignRepository.findAll(pageable);
         }
@@ -71,10 +72,11 @@ public class CampaignController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
     public ResponseEntity<?> get(@PathVariable Long id, Authentication auth) {
+        log.debug("GET /api/campaigns/{} called by {}", id, auth.getName());
         return campaignRepository.findById(id)
                 .map(campaign -> {
                     if (!canAccess(campaign, auth)) {
-                        return forbidden();
+                        return forbidden(id, auth);
                     }
                     return ResponseEntity.ok(campaign);
                 })
@@ -84,10 +86,11 @@ public class CampaignController {
     @GetMapping("/{id}/ads")
     @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
     public ResponseEntity<?> listAds(@PathVariable Long id, Authentication auth, Pageable pageable) {
+        log.debug("GET /api/campaigns/{}/ads called by {}", id, auth.getName());
         return campaignRepository.findById(id)
                 .map(campaign -> {
                     if (!canAccess(campaign, auth)) {
-                        return forbidden();
+                        return forbidden(id, auth);
                     }
                     return ResponseEntity.ok(adRepository.findByCampaignId(id, pageable));
                 })
@@ -103,7 +106,7 @@ public class CampaignController {
         // payment webhook credit on the same campaign.
         return campaignRepository.findByIdForUpdate(id).map(campaign -> {
             if (!canAccess(campaign, auth)) {
-                return forbidden();
+                return forbidden(id, auth);
             }
             if (body.containsKey("name")) {
                 campaign.setName((String) body.get("name"));
@@ -133,7 +136,7 @@ public class CampaignController {
         }
         return campaignRepository.findById(id).map(campaign -> {
             if (!canAccess(campaign, auth)) {
-                return forbidden();
+                return forbidden(id, auth);
             }
             campaign.setStatus(newStatus);
             campaignRepository.save(campaign);
@@ -156,9 +159,10 @@ public class CampaignController {
     @GetMapping("/{id}/analytics")
     @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
     public ResponseEntity<?> analytics(@PathVariable Long id, Authentication auth) {
+        log.debug("GET /api/campaigns/{}/analytics called by {}", id, auth.getName());
         return campaignRepository.findById(id).map(campaign -> {
             if (!canAccess(campaign, auth)) {
-                return forbidden();
+                return forbidden(id, auth);
             }
             long totalViews = viewRepository.countViewsByCampaignId(id);
             long totalAds = adRepository.findByCampaignId(id).size();
@@ -178,9 +182,10 @@ public class CampaignController {
     public ResponseEntity<?> analyticsTimeseries(@PathVariable Long id,
                                                  @RequestParam(defaultValue = "7") int days,
                                                  Authentication auth) {
+        log.debug("GET /api/campaigns/{}/analytics/timeseries called by {}, days={}", id, auth.getName(), days);
         return campaignRepository.findById(id).map(campaign -> {
             if (!canAccess(campaign, auth)) {
-                return forbidden();
+                return forbidden(id, auth);
             }
             Instant since = Instant.now().minus(Duration.ofDays(days));
             var series = viewRepository.viewsByDay(id, since).stream()
@@ -193,9 +198,10 @@ public class CampaignController {
     @GetMapping("/{id}/ads/analytics")
     @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
     public ResponseEntity<?> adsAnalytics(@PathVariable Long id, Authentication auth) {
+        log.debug("GET /api/campaigns/{}/ads/analytics called by {}", id, auth.getName());
         return campaignRepository.findById(id).map(campaign -> {
             if (!canAccess(campaign, auth)) {
-                return forbidden();
+                return forbidden(id, auth);
             }
             var breakdown = viewRepository.viewsByAd(id).stream()
                     .map(row -> Map.<String, Object>of(
@@ -215,7 +221,8 @@ public class CampaignController {
         return campaign.getAdvertiserId() != null && campaign.getAdvertiserId().equals(user.getId());
     }
 
-    private ResponseEntity<Object> forbidden() {
+    private ResponseEntity<Object> forbidden(Long campaignId, Authentication auth) {
+        log.warn("Access denied to campaign {} for user {}", campaignId, auth.getName());
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(Map.of("error", "You do not have access to this campaign"));
     }

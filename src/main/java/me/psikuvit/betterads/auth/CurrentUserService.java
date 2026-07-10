@@ -1,5 +1,6 @@
 package me.psikuvit.betterads.auth;
 
+import lombok.extern.slf4j.Slf4j;
 import me.psikuvit.betterads.auth.exceptions.AuthenticationException;
 import me.psikuvit.betterads.storage.dto.Role;
 import me.psikuvit.betterads.storage.entities.User;
@@ -8,6 +9,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
 @Service
+@Slf4j
 public class CurrentUserService {
 
     private final UserRepository userRepository;
@@ -18,7 +20,10 @@ public class CurrentUserService {
 
     public User resolve(Authentication auth) {
         return userRepository.findByEmail(auth.getName())
-                .orElseThrow(() -> new AuthenticationException("User not found for authenticated principal"));
+                .orElseThrow(() -> {
+                    log.warn("No User row found for authenticated principal email={}", auth.getName());
+                    return new AuthenticationException("User not found for authenticated principal");
+                });
     }
 
     public boolean isAdmin(Authentication auth) {

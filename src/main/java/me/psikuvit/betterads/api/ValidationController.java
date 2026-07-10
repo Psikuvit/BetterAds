@@ -49,7 +49,9 @@ public class ValidationController {
     @GetMapping("/{id}/events")
     @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
     public SseEmitter events(@PathVariable Long id, HttpServletResponse response) {
+        log.info("SSE subscription opened for adId={}", id);
         if (adRepository.findById(id).isEmpty()) {
+            log.warn("SSE subscription requested for unknown adId={}", id);
             throw new NoSuchElementException("Ad not found: " + id);
         }
         // Prevent intermediary proxies (Render/Cloudflare) from buffering this
@@ -80,12 +82,15 @@ public class ValidationController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> review(@PathVariable Long id, @RequestBody Map<String, String> body) {
         String decision = body.get("decision");
+        log.info("PATCH /api/ads/{}/review called with decision={}", id, decision);
         if (decision == null || !VALID_DECISIONS.contains(decision)) {
+            log.warn("Rejected review request for adId={}: invalid decision={}", id, decision);
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "decision must be one of: " + VALID_DECISIONS));
         }
         return adRepository.findById(id).map(ad -> {
             if (ad.getStatus() != AdStatus.FLAGGED) {
+                log.warn("Rejected review request for adId={}: not pending human review (status={})", id, ad.getStatus());
                 return ResponseEntity.badRequest()
                         .body(Map.of("error", "ad is not pending human review (status=" + ad.getStatus() + ")"));
             }
@@ -107,11 +112,13 @@ public class ValidationController {
     @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
     public ResponseEntity<?> selectFeatures(@PathVariable Long id, @RequestBody SelectFeaturesRequest request,
                                             Authentication auth) {
+        log.info("POST /api/ads/{}/features called by {} with locales={}", id, auth.getName(), request.locales());
         return adRepository.findById(id).map(ad -> {
             if (!canAccess(ad, auth)) {
-                return forbidden();
+                return forbidden(id, auth);
             }
             if (ad.getStatus() != AdStatus.AWAITING_FEATURES) {
+                log.warn("Rejected feature selection for adId={}: not awaiting features (status={})", id, ad.getStatus());
                 return ResponseEntity.badRequest()
                         .body(Map.of("error", "ad is not awaiting feature selection (status=" + ad.getStatus() + ")"));
             }
@@ -135,7 +142,8 @@ public class ValidationController {
                 .orElse(false);
     }
 
-    private ResponseEntity<Object> forbidden() {
+    private ResponseEntity<Object> forbidden(Long adId, Authentication auth) {
+        log.warn("Access denied to adId={} for user {}", adId, auth.getName());
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(Map.of("error", "You do not have access to this ad"));
     }

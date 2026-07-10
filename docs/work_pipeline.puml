@@ -3,82 +3,155 @@ left to right direction
 skinparam componentStyle rectangle
 skinparam linetype ortho
 skinparam shadowing false
+skinparam nodesep 30
+skinparam ranksep 50
 
 title BetterAds - Component Architecture
 
-actor Client
+'==========================
+' Actors
+'==========================
+
+actor Advertiser
+actor Publisher
+actor Viewer
+
+'==========================
+' Client Layer
+'==========================
 
 package "Client Layer" {
-    component "Frontend\n(Web / Mobile)" as FE
+    component "Advertiser Dashboard" as ADV_UI
+    component "Publisher Website\n(iframe embed)" as PUB_UI
 }
 
-package "Backend" {
-    component "API Server\n(Spring Boot)" as API
+'==========================
+' API Layer
+'==========================
+
+package "API — Upload & Management" {
+    component "Auth\n/auth/**" as AUTH
+    component "Storage Controller\n/api/upload/presign" as STORE_CTRL
+    component "Upload Controller\n/api/upload/confirm" as UPLOAD_CTRL
+    component "Campaign Controller\n/api/campaigns/**" as CAMP_CTRL
+    component "Validation Controller\n/api/ads/{id}/validation" as VAL_CTRL
+    component "Ad Link Controller\n/api/ads/{id}/link" as ADLINK_CTRL
+}
+
+package "API — Serving" {
+    component "Embed Controller\n/embed/{token}" as EMBED_CTRL
+    component "Ad Controller\n/api/ads/{id}" as AD_CTRL
+    component "Link Controller\n/api/links/{adId}" as LINK_CTRL
+}
+
+'==========================
+' Business Services
+'==========================
+
+package "Business Services" {
+    component "Embed Service\n(token · widget HTML)" as EMBED_SVC
+    component "Link Service\n(locale targeting)" as LINK_SVC
+    component "Fraud Detection\n(60s sliding window)" as FRAUD
+    component "Billing Service\n(CPM · budget cap)" as BILL
+}
+
+'==========================
+' Async Processing
+'==========================
+
+package "Async Processing" {
     component "RabbitMQ" <<Queue>> as MQ
-}
-
-package "Processing Services" {
     component "Worker" as WORKER
     component "Validation Service" as VALID
-    component "Feature Processing" as FEAT
-    component "Human Review" as HR
-    component "Local AI Models\n(Future)" as MODELS
+    component "Feature Processing\n(translation · speech eval)" as FEAT
+    component "Human Review Queue" as HR
+    component "AI Models\n(mock / local)" as AI
 }
 
+'==========================
+' Storage
+'==========================
+
 package "Storage" {
-    database "MySQL" as DB
-    database "Redis Cache" as REDIS
-    component "S3 Storage" as S3
+    database "MySQL\n(users · campaigns · ads\nad_versions · views · ad_links)" as DB
+    database "Redis\n(variant cache)" as REDIS
+    component "S3\n(video blobs)" as S3
     component "CDN" as CDN
 }
 
-package "Business Services" {
-    component "Fraud Detection" as FRAUD
-    component "Billing Service" as BILL
-}
-
 '==========================
-' Client
+' Actors → Client
 '==========================
 
-Client --> FE
-FE --> API
+Advertiser --> ADV_UI
+Publisher  --> PUB_UI
+Viewer     --> PUB_UI
 
 '==========================
-' Backend
+' Upload flow
 '==========================
 
-API --> DB
-API --> REDIS
-API --> MQ
-API --> FRAUD
-API --> BILL
-API --> CDN
-API --> S3
+ADV_UI --> AUTH
+ADV_UI --> STORE_CTRL
+ADV_UI --> UPLOAD_CTRL
+ADV_UI --> CAMP_CTRL
+ADV_UI --> VAL_CTRL
+ADV_UI --> ADLINK_CTRL
+
+STORE_CTRL  --> S3           : presigned URL
+UPLOAD_CTRL --> DB           : create Ad
+UPLOAD_CTRL --> MQ           : enqueue adId
 
 '==========================
-' Processing
+' Async pipeline
 '==========================
 
-MQ --> WORKER
+MQ     --> WORKER
 
 WORKER --> VALID
+VALID  --> AI
+VALID  --> HR
+
 WORKER --> FEAT
-WORKER --> HR
+FEAT   --> AI
+FEAT   --> S3                : translated variant
+FEAT   --> DB                : save AdVersion
 
-VALID --> MODELS
-FEAT --> MODELS
-
-FEAT --> DB
-FEAT --> S3
-
-WORKER --> DB
+WORKER --> EMBED_SVC         : ad live → generate token
+WORKER --> DB                : update status
 
 '==========================
-' Business
+' Embed / link retrieval
 '==========================
 
-FRAUD --> DB
-BILL --> DB
+ADLINK_CTRL --> EMBED_SVC
+EMBED_SVC   --> DB           : persist AdLink
+
+VAL_CTRL    --> DB
+VAL_CTRL    --> HR
+CAMP_CTRL   --> DB
+
+'==========================
+' Widget serving (Viewer)
+'==========================
+
+PUB_UI    --> EMBED_CTRL     : load iframe
+EMBED_CTRL --> EMBED_SVC     : token → adId
+
+PUB_UI    --> AD_CTRL        : widget JS fetch
+AD_CTRL   --> FRAUD
+AD_CTRL   --> LINK_SVC
+LINK_SVC  --> REDIS
+LINK_SVC  --> DB
+AD_CTRL   --> BILL
+BILL      --> DB             : persist View · update spent
+AD_CTRL   --> CDN            : video URL
+
+'==========================
+' Publisher link lookup
+'==========================
+
+Publisher  --> LINK_CTRL
+LINK_CTRL  --> LINK_SVC
 
 @enduml

@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import me.psikuvit.betterads.storage.dto.Role;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -16,6 +17,7 @@ import java.io.IOException;
 import java.util.List;
 
 @Component
+@Slf4j
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtTokenProvider tokenProvider;
 
@@ -38,9 +40,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         List.of(new SimpleGrantedAuthority("ROLE_" + role.name()))
                 );
                 SecurityContextHolder.getContext().setAuthentication(auth);
+                log.debug("Authenticated request {} {} as email={}, role={}", request.getMethod(), request.getRequestURI(), email, role);
+            } else if (token != null) {
+                log.debug("Rejected invalid/expired token for {} {}", request.getMethod(), request.getRequestURI());
             }
         } catch (Exception e) {
             // Token validation failed; continue without authentication
+            log.debug("Token validation threw for {} {}: {}", request.getMethod(), request.getRequestURI(), e.getMessage());
         }
         filterChain.doFilter(request, response);
     }
