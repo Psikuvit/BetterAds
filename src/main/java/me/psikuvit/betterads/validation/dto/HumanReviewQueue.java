@@ -17,4 +17,8 @@ public class HumanReviewQueue {
     public String poll() {
         return queue.poll();
     }
+
+    public boolean contains(String adId) {
+        return queue.contains(adId);
+    }
 }

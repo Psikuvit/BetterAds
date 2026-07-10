@@ -17,6 +17,11 @@ public class Campaign {
 
     private BigDecimal budget = BigDecimal.ZERO;
 
+    private BigDecimal spent = BigDecimal.ZERO;
+
+    // draft -> active -> paused -> completed
+    private String status = "active";
+
     private Instant createdAt = Instant.now();
 
     // getters/setters
@@ -28,6 +33,10 @@ public class Campaign {
     public void setName(String name) { this.name = name; }
     public BigDecimal getBudget() { return budget; }
     public void setBudget(BigDecimal budget) { this.budget = budget; }
+    public BigDecimal getSpent() { return spent; }
+    public void setSpent(BigDecimal spent) { this.spent = spent; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }
