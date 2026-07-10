@@ -1,7 +1,6 @@
 package me.psikuvit.betterads.features;
  
 import lombok.extern.slf4j.Slf4j;
-import me.psikuvit.betterads.ai.SpeechEvaluationService;
 import me.psikuvit.betterads.ai.TranslationService;
 import me.psikuvit.betterads.storage.entities.AdVersion;
 import me.psikuvit.betterads.storage.repositories.AdVersionRepository;
@@ -16,12 +15,11 @@ public class FeatureProcessingService {
 
     private final AdVersionRepository adVersionRepository;
     private final TranslationService translationService;
-    private final SpeechEvaluationService speechEvaluationService;
+    //private final SpeechEvaluationService speechEvaluationService;
 
-    public FeatureProcessingService(AdVersionRepository adVersionRepository, TranslationService translationService, SpeechEvaluationService speechEvaluationService) {
+    public FeatureProcessingService(AdVersionRepository adVersionRepository, TranslationService translationService) {
         this.adVersionRepository = adVersionRepository;
         this.translationService = translationService;
-        this.speechEvaluationService = speechEvaluationService;
     }
 
     public void process(String adId, String storageKey, List<String> locales) {
