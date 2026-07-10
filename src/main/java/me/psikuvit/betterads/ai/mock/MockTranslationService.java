@@ -12,6 +12,6 @@ public class MockTranslationService implements TranslationService {
     public String translate(String storageKey, String targetLocale) {
         // Simulate translation by appending locale tag to key
         if (storageKey == null) return null;
-        return storageKey + "::translated::" + targetLocale;
+        return storageKey;// + "::translated::" + targetLocale;
     }
 }
