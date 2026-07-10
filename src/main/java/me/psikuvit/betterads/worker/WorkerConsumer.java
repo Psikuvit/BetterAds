@@ -49,7 +49,10 @@ public class WorkerConsumer {
                 log.info("Validation result for Ad ID: {}: {}", adId, result);
 
                 if (result == ValidationResult.APPROVED) {
-                    adLifecycleService.moveToLive(ad);
+                    ad.setStatus(AdStatus.AWAITING_FEATURES);
+                    adRepository.save(ad);
+                    eventPublisher.publish(adId, ad.getStatus());
+                    log.info("Ad ID: {} status updated to awaiting_features", adId);
                 } else if (result == ValidationResult.FLAGGED) {
                     ad.setStatus(AdStatus.FLAGGED);
                     adRepository.save(ad);

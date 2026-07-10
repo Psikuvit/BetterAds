@@ -8,6 +8,8 @@ import me.psikuvit.betterads.storage.entities.Ad;
 import me.psikuvit.betterads.storage.repositories.AdRepository;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 @Slf4j
 public class AdLifecycleService {
@@ -28,17 +30,17 @@ public class AdLifecycleService {
     }
 
     /**
-     * Shared by the worker's happy-path (validate -> APPROVED) and the admin
-     * manual-review "approve" decision, so both go through feature processing
-     * and embed-link generation the same way.
+     * Called once the advertiser has chosen which locales to generate,
+     * after an ad reaches AWAITING_FEATURES (whether via the worker's
+     * happy-path validation or an admin's manual-review "approve" decision).
      */
-    public void moveToLive(Ad ad) {
+    public void moveToLive(Ad ad, List<String> locales) {
         ad.setStatus(AdStatus.PROCESSING);
         adRepository.save(ad);
         eventPublisher.publish(ad.getId(), ad.getStatus());
         log.info("Ad ID: {} status updated to processing", ad.getId());
 
-        featureProcessingService.process(ad.getId().toString(), ad.getStorageKey(), ad.getTargetLocale());
+        featureProcessingService.process(ad.getId().toString(), ad.getStorageKey(), locales);
         log.info("Feature processing completed for Ad ID: {}", ad.getId());
 
         ad.setStatus(AdStatus.LIVE);

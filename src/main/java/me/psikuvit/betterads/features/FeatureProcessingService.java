@@ -7,6 +7,8 @@ import me.psikuvit.betterads.storage.entities.AdVersion;
 import me.psikuvit.betterads.storage.repositories.AdVersionRepository;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 @Slf4j
 public class FeatureProcessingService {
@@ -22,24 +24,26 @@ public class FeatureProcessingService {
         this.speechEvaluationService = speechEvaluationService;
     }
 
-    public void process(String adId, String storageKey, String targetLocale) {
-        log.info("Processing features for adId: {}, storageKey: {}, targetLocale: {}", adId, storageKey, targetLocale);
- 
-        // 1) Translation (may return new storage key)
-        String translatedKey = translationService.translate(storageKey, targetLocale);
-        log.debug("Translation completed for adId: {}. Translated key: {}", adId, translatedKey);
- 
-        // 2) Speech evaluation
-        double score = speechEvaluationService.evaluate(translatedKey);
-        log.info("Speech quality score for adId: {}: {}", adId, score);
- 
-        // 3) Persist ad version (one variant for now)
-        AdVersion v = new AdVersion();
-        v.setAdId(Long.valueOf(adId));
-        v.setLocale(targetLocale == null ? "" : targetLocale);
-        v.setStorageKey(translatedKey);
-        adVersionRepository.save(v);
-        log.info("Ad version persisted for adId: {} with locale: {}", adId, targetLocale);
+    public void process(String adId, String storageKey, List<String> locales) {
+        for (String targetLocale : locales) {
+            log.info("Processing features for adId: {}, storageKey: {}, targetLocale: {}", adId, storageKey, targetLocale);
+
+            // 1) Translation (may return new storage key)
+            String translatedKey = translationService.translate(storageKey, targetLocale);
+            log.debug("Translation completed for adId: {}. Translated key: {}", adId, translatedKey);
+
+            // 2) Speech evaluation
+            double score = speechEvaluationService.evaluate(translatedKey);
+            log.info("Speech quality score for adId: {}: {}", adId, score);
+
+            // 3) Persist ad version
+            AdVersion v = new AdVersion();
+            v.setAdId(Long.valueOf(adId));
+            v.setLocale(targetLocale == null ? "" : targetLocale);
+            v.setStorageKey(translatedKey);
+            adVersionRepository.save(v);
+            log.info("Ad version persisted for adId: {} with locale: {}", adId, targetLocale);
+        }
     }
 }
 
