@@ -31,3 +31,10 @@ build/
 
 ### VS Code ###
 .vscode/
+
+
+backend_gaps.txt
+frontend_prompt.txt
+work_pipeline.puml
+betterads.log
+.gitignore
