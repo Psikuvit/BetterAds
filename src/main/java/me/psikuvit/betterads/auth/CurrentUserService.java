@@ -1,6 +1,7 @@
 package me.psikuvit.betterads.auth;
 
 import me.psikuvit.betterads.auth.exceptions.AuthenticationException;
+import me.psikuvit.betterads.storage.dto.Role;
 import me.psikuvit.betterads.storage.entities.User;
 import me.psikuvit.betterads.storage.repositories.UserRepository;
 import org.springframework.security.core.Authentication;
@@ -22,6 +23,6 @@ public class CurrentUserService {
 
     public boolean isAdmin(Authentication auth) {
         return auth.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+                .anyMatch(a -> a.getAuthority().equals("ROLE_" + Role.ADMIN.name()));
     }
 }
