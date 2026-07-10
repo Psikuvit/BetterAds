@@ -7,7 +7,9 @@ import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest;
 import com.amazonaws.services.s3.model.ObjectMetadata;
+import com.amazonaws.services.s3.model.S3Object;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -58,5 +60,13 @@ public class StorageService {
         } catch (AmazonS3Exception e) {
             return Optional.empty();
         }
+    }
+
+    // Streams rather than buffering into a byte[] - uploads can be up to
+    // app.upload.max-size-bytes (200MB by default), too large to hold
+    // wholesale in memory just to forward it to a moderation service.
+    public InputStreamResource downloadObject(String key) {
+        S3Object obj = s3.getObject(bucket, key);
+        return new InputStreamResource(obj.getObjectContent());
     }
 }
