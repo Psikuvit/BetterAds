@@ -95,7 +95,7 @@ public class AdController {
         // Longer expiry than the upload presign since this is read-only playback content
         // and a mid-view expiry would break the video.
         List<String> urls = variants.stream()
-                .map(v -> storageService.presignGetUrl(v.getStorageKey(), Duration.ofHours(2)))
+                .map(v -> storageService.presignGetUrl(extractStorageKey(v.getStorageKey()), Duration.ofHours(2)))
                 .toList();
 
         log.info("Served adId={} to ip={}, variants={}", id, ip, urls.size());
@@ -117,5 +117,10 @@ public class AdController {
     private ResponseEntity<ErrorResponse> tooManyRequests(HttpServletRequest request, String message) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .body(new ErrorResponse(message, HttpStatus.TOO_MANY_REQUESTS.value(), request.getRequestURI(), Instant.now()));
+    }
+
+    private String extractStorageKey(String rawKey) {
+        int idx = rawKey.indexOf("::");
+        return idx == -1 ? rawKey : rawKey.substring(0, idx);
     }
 }
