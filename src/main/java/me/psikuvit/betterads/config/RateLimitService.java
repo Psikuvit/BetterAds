@@ -1,7 +1,6 @@
 package me.psikuvit.betterads.config;
 
 import io.github.bucket4j.Bucket;
-import io.github.bucket4j.Bucket4j;
 import io.github.bucket4j.Refill;
 import io.github.bucket4j.Bandwidth;
 import org.springframework.stereotype.Component;
@@ -30,7 +29,7 @@ public class RateLimitService {
 
     private Bucket createNewBucket() {
         Bandwidth limit = Bandwidth.classic(requestsPerMinute, Refill.intervally(requestsPerMinute, Duration.ofMinutes(1)));
-        return Bucket4j.builder().addLimit(limit).build();
+        return Bucket.builder().addLimit(limit).build();
     }
 
     public long getRemainingTokens(String key) {
