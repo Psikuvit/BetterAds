@@ -23,11 +23,14 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final RateLimitFilter rateLimitFilter;
+    private final SecurityHeadersFilter securityHeadersFilter;
     private final CorsProperties corsProperties;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, RateLimitFilter rateLimitFilter, CorsProperties corsProperties) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, RateLimitFilter rateLimitFilter,
+                          SecurityHeadersFilter securityHeadersFilter, CorsProperties corsProperties) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.rateLimitFilter = rateLimitFilter;
+        this.securityHeadersFilter = securityHeadersFilter;
         this.corsProperties = corsProperties;
     }
 
@@ -58,14 +61,16 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(authz -> authz
                 .requestMatchers("/auth/**").permitAll()
-                .requestMatchers("/actuator/**").permitAll()
+                .requestMatchers("/actuator/health").permitAll()
+                .requestMatchers("/actuator/**").hasRole("ADMIN") // narrowed: only health is public
                 .requestMatchers("/embed/**").permitAll()
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/ads/*").permitAll() // public ad serving
                 .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/payments/webhook").permitAll() // called by Stripe, verified via signature
                 .anyRequest().authenticated()
             )
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterAfter(securityHeadersFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 }

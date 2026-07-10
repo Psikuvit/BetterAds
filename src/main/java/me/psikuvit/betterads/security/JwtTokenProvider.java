@@ -13,12 +13,24 @@ import java.util.Date;
 
 @Component
 public class JwtTokenProvider {
+
+    // HS256's recommended minimum key size per RFC 7518 — a shorter secret
+    // is brute-forceable.
+    private static final int MIN_SECRET_LENGTH = 32;
+
     private final SecretKey key;
     private final long expirationMs;
 
     public JwtTokenProvider(
-            @Value("${app.auth.jwt-secret:my-super-secret-key-change-this-in-production}") String secret,
+            @Value("${app.auth.jwt-secret:}") String secret,
             @Value("${app.auth.jwt-expiration-ms:86400000}") long expirationMs) {
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException("app.auth.jwt-secret must be configured — refusing to start without one");
+        }
+        if (secret.length() < MIN_SECRET_LENGTH) {
+            throw new IllegalStateException(
+                    "app.auth.jwt-secret must be at least " + MIN_SECRET_LENGTH + " characters (HS256 minimum key size)");
+        }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expirationMs = expirationMs;
     }
