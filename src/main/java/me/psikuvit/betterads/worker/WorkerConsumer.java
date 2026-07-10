@@ -1,8 +1,6 @@
 package me.psikuvit.betterads.worker;
 
 import lombok.extern.slf4j.Slf4j;
-import me.psikuvit.betterads.embed.EmbedService;
-import me.psikuvit.betterads.features.FeatureProcessingService;
 import me.psikuvit.betterads.storage.repositories.AdRepository;
 import me.psikuvit.betterads.validation.dto.ValidationResult;
 import me.psikuvit.betterads.validation.ValidationService;
@@ -16,15 +14,15 @@ public class WorkerConsumer {
 
     private final ValidationService validationService;
     private final AdRepository adRepository;
-    private final FeatureProcessingService featureProcessingService;
-    private final EmbedService embedService;
+    private final AdLifecycleService adLifecycleService;
+    private final AdStatusEventPublisher eventPublisher;
 
     public WorkerConsumer(ValidationService validationService, AdRepository adRepository,
-                          FeatureProcessingService featureProcessingService, EmbedService embedService) {
+                          AdLifecycleService adLifecycleService, AdStatusEventPublisher eventPublisher) {
         this.validationService = validationService;
         this.adRepository = adRepository;
-        this.featureProcessingService = featureProcessingService;
-        this.embedService = embedService;
+        this.adLifecycleService = adLifecycleService;
+        this.eventPublisher = eventPublisher;
     }
 
     @RabbitListener(queues = "ad-processing")
@@ -43,39 +41,26 @@ public class WorkerConsumer {
             try {
                 ad.setStatus("validating");
                 adRepository.save(ad);
+                eventPublisher.publish(adId, ad.getStatus());
                 log.info("Ad ID: {} status updated to validating", adId);
 
                 ValidationResult result = validationService.validate(ad.getStorageKey(), ad.getId().toString());
                 log.info("Validation result for Ad ID: {}: {}", adId, result);
 
                 if (result == ValidationResult.APPROVED) {
-                    ad.setStatus("processing");
-                    adRepository.save(ad);
-                    log.info("Ad ID: {} status updated to processing", adId);
-
-                    featureProcessingService.process(ad.getId().toString(), ad.getStorageKey(), ad.getTargetLocale());
-                    log.info("Feature processing completed for Ad ID: {}", adId);
-
-                    ad.setStatus("live");
-                    adRepository.save(ad);
-                    log.info("Ad ID: {} status updated to live", adId);
-
-                    // Generate embed link now that the ad is live
-                    var link = embedService.generateLink(adId);
-                    log.info("Ad ID: {} is live — embed token={}", adId, link.getToken());
-
+                    adLifecycleService.moveToLive(ad);
                 } else if (result == ValidationResult.FLAGGED) {
                     ad.setStatus("flagged");
                     adRepository.save(ad);
+                    eventPublisher.publish(adId, ad.getStatus());
                     log.info("Ad ID: {} status updated to flagged (pending human review)", adId);
                 } else {
-                    ad.setStatus("rejected");
-                    adRepository.save(ad);
-                    log.info("Ad ID: {} status updated to rejected", adId);
+                    adLifecycleService.reject(ad);
                 }
             } catch (Exception ex) {
                 ad.setStatus("failed");
                 adRepository.save(ad);
+                eventPublisher.publish(adId, ad.getStatus());
                 log.error("Worker failed for adId={} : {}", adId, ex.getMessage(), ex);
             }
         });

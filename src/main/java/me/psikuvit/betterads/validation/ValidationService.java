@@ -1,8 +1,7 @@
 package me.psikuvit.betterads.validation;
- 
+
 import lombok.extern.slf4j.Slf4j;
 import me.psikuvit.betterads.ai.ModerationService;
-import me.psikuvit.betterads.validation.dto.HumanReviewQueue;
 import me.psikuvit.betterads.validation.dto.ValidationResult;
 import org.springframework.stereotype.Service;
 
@@ -11,11 +10,9 @@ import org.springframework.stereotype.Service;
 public class ValidationService {
 
     private final ModerationService moderationService;
-    private final HumanReviewQueue humanReviewQueue;
 
-    public ValidationService(ModerationService moderationService, HumanReviewQueue humanReviewQueue) {
+    public ValidationService(ModerationService moderationService) {
         this.moderationService = moderationService;
-        this.humanReviewQueue = humanReviewQueue;
     }
 
     /**
@@ -31,8 +28,7 @@ public class ValidationService {
                 break;
             case FLAGGED:
                 log.warn("Ad ID: {} flagged for human review", adId);
-                // enqueue for human review
-                humanReviewQueue.enqueue(adId);
+                // worker persists status="flagged" on the Ad row; that's the source of truth
                 break;
             case REJECTED:
                 log.warn("Ad ID: {} rejected by moderation", adId);
@@ -42,4 +38,3 @@ public class ValidationService {
         return res;
     }
 }
-
