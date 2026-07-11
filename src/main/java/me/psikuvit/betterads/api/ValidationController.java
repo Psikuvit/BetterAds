@@ -127,9 +127,17 @@ public class ValidationController {
                         .body(Map.of("error", "ad is not awaiting feature selection (status=" + ad.getStatus() + ")"));
             }
             List<String> locales = (request.locales() == null || request.locales().isEmpty())
-                    ? List.of(ad.getTargetLocale() != null ? ad.getTargetLocale() : "en")
+                    ? List.of()
                     : request.locales();
-            adLifecycleService.moveToLive(ad, locales);
+            if (locales.isEmpty()) {
+                ad.setStatus(AdStatus.LIVE);
+                adRepository.save(ad);
+                eventPublisher.publish(id, ad.getStatus());
+                var link = embedService.generateLink(ad.getId());
+                log.info("Ad ID: {} skipped translation, live with embed token={}", id, link.getToken());
+            } else {
+                adLifecycleService.moveToLive(ad, locales);
+            }
             log.info("Ad ID: {} features selected, locales={}", id, locales);
             return ResponseEntity.ok(Map.of("adId", id, "status", ad.getStatus()));
         }).orElse(ResponseEntity.notFound().build());

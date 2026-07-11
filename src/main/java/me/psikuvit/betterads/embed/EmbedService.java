@@ -75,7 +75,7 @@ public class EmbedService {
             </head>
             <body oncontextmenu="return false">
               <div id="wrap">
-                <video id="ad" autoplay muted playsinline
+                <video id="ad" autoplay playsinline
                        disablepictureinpicture
                        controlslist="nodownload noplaybackrate nofullscreen"></video>
                 <div id="shield"></div>
