@@ -167,7 +167,8 @@ RabbitMQ          WorkerConsumer       ValidationService    AI Provider (moderat
     │  │  5a. status = AWAITING_FEATURES       │                     │
     │  │  ─ ─ SSE: AWAITING_FEATURES ─ ─ ─ ─ > │                    │
     │  │                                      │                     │
-    │  │  6a. moveToLive() → status = PROCESSING                    │
+    │  │  6a. POST /features → 202 Accepted   │                     │
+    │  │  (async: CompletableFuture.runAsync)  │                     │
     │  │  ─ ─ SSE: PROCESSING ─ ─ ─ ─ ─ ─ ─ > │                    │
     │  │                                      │                     │
     │  │  ┌───────────────────────────────────┤                     │
@@ -198,6 +199,11 @@ RabbitMQ          WorkerConsumer       ValidationService    AI Provider (moderat
     │  │                                      │                     │
     │  ├──────────────────────────────────────┤                     │
     │  │                                      │                     │
+    │  │ SKIP TRANSLATION (locales=[])        │                     │
+    │  │ 6b. Create AdVersion for original    │                     │
+    │  │     video → status = LIVE            │                     │
+    │  │  ─ ─ SSE: LIVE ─ ─ ─ ─ ─ ─ ─ ─ ─ >│                     │
+    │  │                                      │                     │
     │  │ FLAGGED?                             │                     │
     │  │ 5b. status = FLAGGED                 │                     │
     │  │ ─ ─ SSE: FLAGGED ─ ─ > (waits for admin review)          │
@@ -212,11 +218,25 @@ RabbitMQ          WorkerConsumer       ValidationService    AI Provider (moderat
     │  └──────────────────────────────────────┤                     │
 ```
 
+### Feature Selection (POST /api/ads/{id}/features)
+
+The `/features` endpoint is **async** — it returns `202 Accepted` immediately
+and dispatches translation to a background thread via
+`CompletableFuture.runAsync()`. This avoids Render's 30-second proxy timeout
+during the HuggingFace translation call (~18s+).
+
+- `locales=[]` (skip translation): Creates an `AdVersion` pointing to the
+  original video, sets status LIVE, returns 200 immediately.
+- `locales=["fr"]`: Sets status PROCESSING, returns 202, processes in
+  background. SSE events notify the frontend of status changes in real-time.
+
 ## Data Flow 3: Ad Serving (Viewer → Widget → API → S3)
 
-The embed widget cycles through all LIVE ads in the campaign endlessly.
-It fetches the playlist endpoint, which returns presigned S3 URLs for every
-LIVE ad, and plays them in sequence.
+The embed widget is served at campaign level (`GET /api/campaigns/{id}/embed`
+returns the embed URL for the campaign's first LIVE ad). The widget cycles
+through all LIVE ads in the campaign endlessly using a two-video swap for
+seamless transitions. The widget reports its natural video dimensions to the
+parent iframe via `postMessage` for dynamic sizing.
 
 ```
 Viewer               Publisher Website      BetterAds              S3       Redis
@@ -247,9 +267,9 @@ Viewer               Publisher Website      BetterAds              S3       Redi
     │                      │                   │                     │        │
     │  5. Script detects   │                   │                     │        │
     │  browser locale,     │                   │                     │        │
-    │  fetches ad:         │                   │                     │        │
-    │  GET /api/ads/{id}?  │                   │                     │        │
-    │  locale=en&vt=xxx    │                   │                     │        │
+    │  fetches playlist:   │                   │                     │        │
+    │  GET /api/ads/{id}/  │                   │                     │        │
+    │  playlist?locale=&vt=│                   │                     │        │
     ├─────────────────────────────────────────>│                     │        │
     │                      │                   │                     │        │
     │                      │                   │  6. Validate view   │        │
@@ -264,31 +284,42 @@ Viewer               Publisher Website      BetterAds              S3       Redi
     │                      │                   │<── OK / BLOCKED ───────────┤
     │                      │                   │                     │        │
     │                      │                   │  8. Record view     │        │
-    │                      │                   │     BillingService  │        │
-    │                      │                   │     → View entity   │        │
-    │                      │                   │     → campaign.spent│        │
+    │                      │                   │     for EACH ad     │        │
+    │                      │                   │     in campaign     │        │
     │                      │                   ├──────────────────> DB       │
     │                      │                   │                     │        │
-    │                      │                   │  9. Resolve locale  │        │
-    │                      │                   │     best AdVersion  │        │
-    │                      │                   ├──────────────────> DB       │
-    │                      │                   │                     │        │
-    │                      │                   │  10. Presign GET    │        │
-    │                      │                   │      URLs for each  │        │
-    │                      │                   │      variant        │        │
+    │                      │                   │  9. Presign GET    │        │
+    │                      │                   │     URLs for each   │        │
+    │                      │                   │     ad's version    │        │
     │                      │                   ├─────────────────────>│       │
     │                      │                   │<── presigned URLs ──┤       │
     │                      │                   │                     │        │
-    │  {adId, variants:    │                   │                     │        │
-    │   [presignedUrl...]} │                   │                     │        │
+    │  {ads: [{adId, url,  │                   │                     │        │
+    │    locale, vt}...]}  │                   │                     │        │
     │<─────────────────────────────────────────┤                     │        │
     │                      │                   │                     │        │
-    │  11. Browser loads   │                   │                     │        │
-    │  video from S3       │                   │                     │        │
-    │  presigned URL       │                   │                     │        │
-    ├────────────────────────────────────────────────────────────────>│       │
-    │<── video bytes ────────────────────────────────────────────────┤       │
+    │  10. Two-video swap: │                   │                     │        │
+    │  video A plays,      │                   │                     │        │
+    │  video B preloads    │                   │                     │        │
+    │  next. On ended:     │                   │                     │        │
+    │  swap z-index, play  │                   │                     │        │
+    │  B, preload A.       │                   │                     │        │
+    │  Loop endlessly.     │                   │                     │        │
+    │                      │                   │                     │        │
+    │  11. postMessage     │                   │                     │        │
+    │  {type:"ad-resize",  │                   │                     │        │
+    │   width, height}     │                   │                     │        │
+    │  → parent resizes    │                   │                     │        │
+    │    iframe            │                   │                     │        │
 ```
+
+### Campaign-Level Embed
+
+The embed is served from the campaign dashboard (`GET /api/campaigns/{id}/embed`),
+not from individual ad pages. The endpoint returns the embed URL/snippet for the
+campaign's first LIVE ad, or `{available: false}` if no live ads exist. The
+individual ad detail page (`/ads/[id]`) has been removed — all ad management
+(stats, feature selection, embed) happens at the campaign level.
 
 ## Data Flow 4: Authentication
 
@@ -456,9 +487,12 @@ Admin                   BetterAds               AI Provider
   │                        │  1. Verify ADMIN role  │
   │                        │  2. Check status=FLAGGED│
   │                        │                        │
-  │                        │  3. moveToLive()       │
-  │                        │     status=PROCESSING  │
-  │                        │  ─ ─ SSE: PROCESSING ─>│
+  │                        │  3. status=AWAITING_FEATURES
+  │                        │  ─ ─ SSE: AWAITING_FEATURES ─ > │
+  │                        │                        │
+  │  Advertiser then calls │                        │
+  │  POST /features → 202  │                        │
+  │  (async processing)    │                        │
   │                        │                        │
   │                        │  4. FeatureProcessing  │
   │                        │     translate()        │
@@ -476,7 +510,26 @@ Admin                   BetterAds               AI Provider
   │                        │                        │
   │  {status: "live"}      │                        │
   │<───────────────────────┤                        │
+  │                        │                        │
+  │  REJECT:               │                        │
+  │  PATCH /review         │                        │
+  │  {action: "reject"}    │                        │
+  │  → status = REJECTED   │                        │
+  │  ─ ─ SSE: REJECTED ─ >│                        │
 ```
+
+### Ad Deletion
+
+Both admins and advertisers can delete ads:
+
+- **Admins**: Can delete any ad via `DELETE /api/ads/{id}`.
+- **Advertisers**: Can delete ads belonging to their own campaigns.
+  The endpoint checks ownership via `CurrentUserService` and
+  `CampaignRepository`.
+
+Deletion cascades through S3 and DB:
+`AdCleanupService.deleteAd()` removes S3 files, views, ad versions,
+ad links, and the ad entity itself.
 
 ## Security Architecture
 

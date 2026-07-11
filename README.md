@@ -90,9 +90,10 @@ runs inside a single entrypoint, `BetterAdsApplication`.
      a `ModerationService` implementation and gets back `APPROVED`,
      `FLAGGED`, or `REJECTED`.
    - On `APPROVED`, the ad reaches `AWAITING_FEATURES`. The advertiser can
-     either select French translation (triggers `moveToLive()` → processing
-     → live) or skip translation (ad goes straight to `LIVE` with the
-     original video).
+     select French translation (triggers async `moveToLive()` via
+     `CompletableFuture.runAsync()` → returns 202 immediately) or skip
+     translation (ad goes straight to `LIVE` with the original video).
+     SSE events notify the frontend of status changes in real-time.
    - On `FLAGGED`, status becomes `flagged` and the ad waits for a human
      decision.
    - On `REJECTED`, `AdLifecycleService.reject()` sets status `rejected`.
@@ -105,10 +106,14 @@ runs inside a single entrypoint, `BetterAdsApplication`.
    automatic path. Admins can also reject ads in any pre-live status.
 
 6. **Serving.** `GET /embed/{token}` (public) resolves the token to an ad ID
-   and returns a small HTML page with an inline `<video>` and a script that
-   fetches `GET /api/ads/{id}/playlist?locale=&vt=`. That endpoint returns
-   all LIVE ads in the campaign with presigned S3 URLs, and the widget cycles
-   through them endlessly. The widget is not muted.
+   and returns a small HTML page with two `<video>` elements (for seamless
+   swapping) and a script that fetches `GET /api/ads/{id}/playlist?locale=&vt=`.
+   That endpoint returns all LIVE ads in the campaign with presigned S3 URLs,
+   and the widget cycles through them endlessly. The widget reports video
+   dimensions to the parent iframe via `postMessage` for dynamic sizing.
+   The embed is served at campaign level (`GET /api/campaigns/{id}/embed`).
+   The individual ad detail page (`/ads/[id]`) has been removed — all ad
+   management happens at the campaign level.
 
 ## Module Responsibilities
 
@@ -148,8 +153,11 @@ runs inside a single entrypoint, `BetterAdsApplication`.
   and speech evaluation into a persisted `AdVersion`.
 
 - **`embed/`** — Public widget serving (`EmbedController`/`EmbedService`):
-  generates and resolves embed tokens, renders the widget HTML, and issues
-  a signed view token into that HTML on every render.
+  generates and resolves embed tokens, renders the widget HTML (two-video
+  swap for seamless transitions, `postMessage` for dynamic sizing), and
+  issues a signed view token into that HTML on every render. Campaign
+  embed endpoint (`GET /api/campaigns/{id}/embed`) returns the embed
+  URL for the campaign's first LIVE ad.
 
 - **`fraud/`** — `FraudService` (Redis-backed sliding-window IP rate check),
   `ViewTokenService` (signed, one-time-use tokens tying a view back to a
@@ -197,7 +205,9 @@ public surface (`/auth/**`, `/embed/**`, `GET /api/ads/{id}`,
 requires authentication plus a method-level `@PreAuthorize` role check.
 Resource-level ownership (an advertiser can only see/edit their own campaigns)
 is enforced in the controllers themselves via `CurrentUserService`, not by
-Spring Security. Admins can delete any ad via `DELETE /api/ads/{id}`.
+Spring Security. Both admins and advertisers can delete ads via
+`DELETE /api/ads/{id}` — advertisers can only delete ads in their own
+campaigns, admins can delete any ad.
 
 ### Filter Chain Order
 
@@ -365,7 +375,7 @@ interface in `ai/`, with implementations selected by the
 | Interface | Mock (default) | Local | HuggingFace |
 |-----------|----------------|-------|-------------|
 | `ModerationService` | Keyword-based (reject/flag/approve by storage key name) | POST /moderate to localhost:9000 | Gradio 3-step: upload → submit → SSE await |
-| `TranslationService` | Returns original key unchanged | POST /translate to localhost:9000 | Gradio EN→FR video dubbing only, downloads result to S3; failures propagate (revert to AWAITING_FEATURES) |
+| `TranslationService` | Returns original key unchanged | POST /translate to localhost:9000 | Gradio EN→FR video dubbing only, uses VideoData format (input/output), downloads result to S3; failures propagate (revert to AWAITING_FEATURES) |
 | `SpeechEvaluationService` | Hash-based deterministic 0.6–0.99 score | POST /speech/evaluate to localhost:9000 | Fake scoring (no HTTP call, returns random 0.6–0.99) |
 
 This is the seam where a real third-party AI provider would be plugged in
@@ -438,8 +448,16 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
    is marked COMPLETED and `AdCleanupService` deletes all ads in the campaign
    (S3 files + DB cascade: views, ad versions, embed links, ad entities).
 8. **Hard deletes** — Ads are fully deleted from S3 and DB via
-   `AdCleanupService`. Admins can delete ads at any time; automatic deletion
-   happens when a campaign's budget is exhausted.
+   `AdCleanupService`. Both admins and advertisers can delete ads
+   (advertisers only their own); automatic deletion happens when a
+   campaign's budget is exhausted.
 9. **SSE is single-instance** — The in-process `ConcurrentHashMap` of SSE
    emitters means subscribers are only notified by the instance they
    connected to.
+10. **Async feature processing** — `POST /api/ads/{id}/features` returns
+    202 immediately and processes translation in a background thread via
+    `CompletableFuture.runAsync()`. This avoids Render's 30-second proxy
+    timeout during HuggingFace translation (~18s+).
+11. **Campaign-level embed** — The embed is served from the campaign
+    dashboard, not individual ad pages. The individual ad detail page
+    has been removed — all ad management happens at campaign level.
