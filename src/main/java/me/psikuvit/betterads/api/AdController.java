@@ -2,6 +2,7 @@ package me.psikuvit.betterads.api;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import me.psikuvit.betterads.auth.CurrentUserService;
 import me.psikuvit.betterads.billing.BillingService;
 import me.psikuvit.betterads.common.exceptions.ErrorResponse;
 import me.psikuvit.betterads.embed.EmbedService;
@@ -14,12 +15,14 @@ import me.psikuvit.betterads.storage.StorageService;
 import me.psikuvit.betterads.storage.dto.AdStatus;
 import me.psikuvit.betterads.storage.entities.Ad;
 import me.psikuvit.betterads.storage.entities.AdVersion;
+import me.psikuvit.betterads.storage.entities.Campaign;
 import me.psikuvit.betterads.storage.repositories.AdRepository;
 import me.psikuvit.betterads.storage.repositories.AdVersionRepository;
+import me.psikuvit.betterads.storage.repositories.CampaignRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
@@ -45,12 +48,15 @@ public class AdController {
     private final ClientIpResolver clientIpResolver;
     private final StorageService storageService;
     private final AdCleanupService adCleanupService;
+    private final CurrentUserService currentUserService;
+    private final CampaignRepository campaignRepository;
 
     public AdController(LinkService linkService, FraudService fraudService,
                         BillingService billingService, AdRepository adRepository,
                         AdVersionRepository adVersionRepository, EmbedService embedService,
                         ViewTokenService viewTokenService, ClientIpResolver clientIpResolver,
-                        StorageService storageService, AdCleanupService adCleanupService) {
+                        StorageService storageService, AdCleanupService adCleanupService,
+                        CurrentUserService currentUserService, CampaignRepository campaignRepository) {
         this.linkService = linkService;
         this.fraudService = fraudService;
         this.billingService = billingService;
@@ -61,6 +67,8 @@ public class AdController {
         this.clientIpResolver = clientIpResolver;
         this.storageService = storageService;
         this.adCleanupService = adCleanupService;
+        this.currentUserService = currentUserService;
+        this.campaignRepository = campaignRepository;
     }
 
     @GetMapping("/{id}")
@@ -174,11 +182,21 @@ public class AdController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<?> deleteAd(@PathVariable Long id) {
+    @PreAuthorize("hasAnyRole('ADMIN', 'ADVERTISER')")
+    public ResponseEntity<?> deleteAd(@PathVariable Long id, Authentication auth) {
         return adRepository.findById(id).map(ad -> {
+            if (!currentUserService.isAdmin(auth)) {
+                boolean owns = campaignRepository.findById(ad.getCampaignId())
+                        .map(Campaign::getAdvertiserId)
+                        .map(uid -> uid.equals(currentUserService.resolve(auth).getId()))
+                        .orElse(false);
+                if (!owns) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                            .<Object>body(Map.of("error", "You do not have access to this ad"));
+                }
+            }
             adCleanupService.deleteAd(ad);
-            log.info("Ad {} deleted by admin", id);
+            log.info("Ad {} deleted by {}", id, auth.getName());
             return ResponseEntity.ok(Map.of("adId", id, "deleted", true));
         }).orElse(ResponseEntity.notFound().build());
     }
