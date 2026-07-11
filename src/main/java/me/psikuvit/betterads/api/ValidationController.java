@@ -139,7 +139,14 @@ public class ValidationController {
                 var link = embedService.generateLink(ad.getId());
                 log.info("Ad ID: {} skipped translation, live with embed token={}", id, link.getToken());
             } else {
-                adLifecycleService.moveToLive(ad, locales);
+                try {
+                    adLifecycleService.moveToLive(ad, locales);
+                } catch (RuntimeException e) {
+                    log.warn("Ad ID: {} feature processing failed: {}", id, e.getMessage());
+                    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                            .body(Map.of("error", "Processing failed: " + e.getMessage(),
+                                    "adId", id, "status", "AWAITING_FEATURES"));
+                }
             }
             log.info("Ad ID: {} features selected, locales={}", id, locales);
             return ResponseEntity.ok(Map.of("adId", id, "status", ad.getStatus()));

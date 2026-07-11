@@ -156,25 +156,44 @@ public class HuggingFaceTranslationService implements TranslationService {
     private JsonNode awaitResult(String eventId) throws Exception {
         long start = System.currentTimeMillis();
         log.debug("[huggingface] awaiting SSE 'complete' event for eventId={}", eventId);
-        ServerSentEvent<String> complete = webClient.get()
+
+        // Walk the SSE stream event-by-event. Log non-terminal events (heartbeat,
+        // progress) for debugging and return as soon as we see "complete" or "error".
+        List<ServerSentEvent<String>> terminal = webClient.get()
                 .uri("/gradio_api/call/dub_video/{eventId}", eventId)
                 .accept(MediaType.TEXT_EVENT_STREAM)
                 .retrieve()
                 .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
-                .filter(sse -> "complete".equals(sse.event()))
-                .next()
+                .doOnNext(sse -> {
+                    String evt = sse.event();
+                    if (!"complete".equals(evt) && !"error".equals(evt)) {
+                        log.trace("[huggingface] event={} for eventId={}", evt, eventId);
+                    }
+                })
+                .filter(sse -> "complete".equals(sse.event()) || "error".equals(sse.event()))
+                .take(1)
+                .collectList()
                 .block(TIMEOUT);
 
-        if (complete == null || complete.data() == null) {
-            log.warn("[huggingface] no complete event received for eventId={} after {}ms", eventId, System.currentTimeMillis() - start);
-            throw new IllegalStateException("No complete event received for event_id=" + eventId);
+        if (terminal == null || terminal.isEmpty()) {
+            log.warn("[huggingface] no terminal event received for eventId={} after {}ms",
+                    eventId, System.currentTimeMillis() - start);
+            throw new IllegalStateException("No complete/error event received for event_id=" + eventId);
         }
-        JsonNode result = objectMapper.readTree(complete.data());
+
+        ServerSentEvent<String> event = terminal.getFirst();
+        if ("error".equals(event.event())) {
+            log.warn("[huggingface] Space returned error for eventId={}: {}", eventId, event.data());
+            throw new IllegalStateException("HuggingFace Space error for event_id=" + eventId + ": " + event.data());
+        }
+
+        JsonNode result = objectMapper.readTree(event.data());
         JsonNode fileData = result.get(0);
         if (fileData == null || fileData.isNull()) {
             throw new IllegalStateException("Complete event carried no output file for event_id=" + eventId);
         }
-        log.debug("[huggingface] dubbed file received for eventId={} after {}ms", eventId, System.currentTimeMillis() - start);
+        log.debug("[huggingface] dubbed file received for eventId={} after {}ms",
+                eventId, System.currentTimeMillis() - start);
         return fileData;
     }
 
