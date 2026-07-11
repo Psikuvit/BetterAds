@@ -43,7 +43,7 @@ import java.util.Map;
 @ConditionalOnProperty(name = "app.ai.provider", havingValue = "huggingface")
 public class HuggingFaceTranslationService implements TranslationService {
 
-    private static final Duration TIMEOUT = Duration.ofMinutes(4);
+    private static final Duration TIMEOUT = Duration.ofMinutes(5);
     private static final String SUPPORTED_TARGET_LOCALE = "fr";
     private static final String FEATURE_NAME = "translation";
 
