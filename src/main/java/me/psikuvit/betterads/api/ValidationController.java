@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequestMapping("/api/ads")
@@ -151,17 +152,25 @@ public class ValidationController {
                 var link = embedService.generateLink(ad.getId());
                 log.info("Ad ID: {} skipped translation, live with embed token={}", id, link.getToken());
             } else {
-                try {
-                    adLifecycleService.moveToLive(ad, locales);
-                } catch (RuntimeException e) {
-                    log.warn("Ad ID: {} feature processing failed: {}", id, e.getMessage());
-                    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
-                            .body(Map.of("error", "Processing failed: " + e.getMessage(),
-                                    "adId", id, "status", "AWAITING_FEATURES"));
-                }
+                ad.setStatus(AdStatus.PROCESSING);
+                adRepository.save(ad);
+                eventPublisher.publish(id, ad.getStatus());
+
+                final Ad adRef = ad;
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        adLifecycleService.moveToLive(adRef, locales);
+                    } catch (RuntimeException e) {
+                        log.warn("Ad ID: {} async feature processing failed: {}", id, e.getMessage());
+                    }
+                });
+                log.info("Ad ID: {} feature processing dispatched asynchronously, locales={}", id, locales);
             }
             log.info("Ad ID: {} features selected, locales={}", id, locales);
-            return ResponseEntity.ok(Map.of("adId", id, "status", ad.getStatus()));
+            if (locales.isEmpty()) {
+                return ResponseEntity.ok(Map.of("adId", id, "status", ad.getStatus()));
+            }
+            return ResponseEntity.accepted(Map.of("adId", id, "status", ad.getStatus()));
         }).orElse(ResponseEntity.notFound().build());
     }
 
