@@ -2,7 +2,10 @@ package me.psikuvit.betterads.api;
 
 import lombok.extern.slf4j.Slf4j;
 import me.psikuvit.betterads.auth.CurrentUserService;
+import me.psikuvit.betterads.embed.EmbedService;
+import me.psikuvit.betterads.storage.dto.AdStatus;
 import me.psikuvit.betterads.storage.dto.CampaignStatus;
+import me.psikuvit.betterads.storage.entities.Ad;
 import me.psikuvit.betterads.storage.entities.Campaign;
 import me.psikuvit.betterads.storage.entities.User;
 import me.psikuvit.betterads.storage.repositories.AdRepository;
@@ -32,15 +35,18 @@ public class CampaignController {
     private final AdRepository adRepository;
     private final ViewRepository viewRepository;
     private final CurrentUserService currentUserService;
+    private final EmbedService embedService;
 
     public CampaignController(CampaignRepository campaignRepository,
                                AdRepository adRepository,
                                ViewRepository viewRepository,
-                               CurrentUserService currentUserService) {
+                               CurrentUserService currentUserService,
+                               EmbedService embedService) {
         this.campaignRepository = campaignRepository;
         this.adRepository = adRepository;
         this.viewRepository = viewRepository;
         this.currentUserService = currentUserService;
+        this.embedService = embedService;
     }
 
     @PostMapping
@@ -210,6 +216,27 @@ public class CampaignController {
                             "views", ((Number) row[2]).longValue()))
                     .toList();
             return ResponseEntity.ok(breakdown);
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/{id}/embed")
+    @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
+    public ResponseEntity<?> embed(@PathVariable Long id, Authentication auth) {
+        return campaignRepository.findById(id).map(campaign -> {
+            if (!canAccess(campaign, auth)) {
+                return forbidden(id, auth);
+            }
+            Ad liveAd = adRepository.findByCampaignIdAndStatus(id, AdStatus.LIVE).stream().findFirst().orElse(null);
+            if (liveAd == null) {
+                return ResponseEntity.ok(Map.<String, Object>of("available", false));
+            }
+            var link = embedService.generateLink(liveAd.getId());
+            return ResponseEntity.ok(Map.<String, Object>of(
+                    "available", true,
+                    "adId", liveAd.getId(),
+                    "embedUrl", embedService.embedUrl(link.getToken()),
+                    "embedSnippet", embedService.embedSnippet(link.getToken()),
+                    "token", link.getToken()));
         }).orElse(ResponseEntity.notFound().build());
     }
 
