@@ -24,7 +24,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Calls the HuggingFace Space at https://huggingface.co/spaces/3amizoubir/ad-moderation
+ * Calls the HuggingFace Space at <a href="https://huggingface.co/spaces/3amizoubir/ad-moderation">...</a>
  * (a gr.Interface with api_name="moderate") via Gradio's HTTP API, which is a
  * 3-step flow: multipart upload -> submit a call (get an event_id) -> read
  * the SSE event stream for that event_id until the "complete" event.

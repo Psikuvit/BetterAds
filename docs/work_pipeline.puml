@@ -3,10 +3,13 @@ left to right direction
 skinparam componentStyle rectangle
 skinparam linetype ortho
 skinparam shadowing false
-skinparam nodesep 30
-skinparam ranksep 50
+skinparam nodesep 25
+skinparam ranksep 40
+skinparam defaultFontSize 11
+skinparam packageFontSize 13
+skinparam packageStyle rectangle
 
-title BetterAds - Component Architecture
+title BetterAds — Full Component Architecture
 
 '==========================
 ' Actors
@@ -15,33 +18,67 @@ title BetterAds - Component Architecture
 actor Advertiser
 actor Publisher
 actor Viewer
+actor "Stripe Webhook" as STRIPE_WH
+actor Admin
 
 '==========================
 ' Client Layer
 '==========================
 
 package "Client Layer" {
-    component "Advertiser Dashboard" as ADV_UI
+    component "Advertiser\nDashboard" as ADV_UI
     component "Publisher Website\n(iframe embed)" as PUB_UI
+    component "Stripe.js\n(client-side payment)" as STRIPE_JS
 }
 
 '==========================
-' API Layer
+' Security Filter Chain
+'==========================
+
+package "Security Filter Chain" {
+    component "Rate Limit Filter\n(Bucket4j)" as RATE_FILT
+    component "Security Headers\nFilter" as HDR_FILT
+    component "JWT Auth\nFilter" as JWT_FILT
+}
+
+'==========================
+' API Layer — Auth
+'==========================
+
+package "API — Auth (/auth/**)" {
+    component "Auth Controller\nlogin · register\nrefresh · logout" as AUTH_CTRL
+    component "Auth Service\nBCrypt · JWT\nRefresh Tokens" as AUTH_SVC
+}
+
+'==========================
+' API Layer — Upload & Management
 '==========================
 
 package "API — Upload & Management" {
-    component "Auth\n/auth/**" as AUTH
-    component "Storage Controller\n/api/upload/presign" as STORE_CTRL
-    component "Upload Controller\n/api/upload/confirm" as UPLOAD_CTRL
-    component "Campaign Controller\n/api/campaigns/**" as CAMP_CTRL
-    component "Validation Controller\n/api/ads/{id}/validation" as VAL_CTRL
-    component "Ad Link Controller\n/api/ads/{id}/link" as ADLINK_CTRL
+    component "Storage Controller\n/presign" as STORE_CTRL
+    component "Upload Controller\n/confirm" as UPLOAD_CTRL
+    component "Campaign Controller\n/campaigns/**" as CAMP_CTRL
+    component "Validation Controller\n/validation · /review\n/events · /features" as VAL_CTRL
+    component "Ad Link Controller\n/ads/{id}/link" as ADLINK_CTRL
+    component "Analytics Controller\n/analytics/**" as ANALYTICS_CTRL
 }
 
-package "API — Serving" {
+'==========================
+' API Layer — Serving
+'==========================
+
+package "API — Public Serving" {
     component "Embed Controller\n/embed/{token}" as EMBED_CTRL
-    component "Ad Controller\n/api/ads/{id}" as AD_CTRL
-    component "Link Controller\n/api/links/{adId}" as LINK_CTRL
+    component "Ad Controller\n/ads/{id}\n(public serve)" as AD_CTRL
+    component "Link Controller\n/links/{adId}" as LINK_CTRL
+}
+
+'==========================
+' API Layer — Payments
+'==========================
+
+package "API — Payments" {
+    component "Payment Controller\n/fund · /webhook" as PAY_CTRL
 }
 
 '==========================
@@ -49,109 +86,239 @@ package "API — Serving" {
 '==========================
 
 package "Business Services" {
-    component "Embed Service\n(token · widget HTML)" as EMBED_SVC
-    component "Link Service\n(locale targeting)" as LINK_SVC
-    component "Fraud Detection\n(60s sliding window)" as FRAUD
-    component "Billing Service\n(CPM · budget cap)" as BILL
+    component "Storage Service\nS3 presign · metadata" as STORAGE_SVC
+    component "Embed Service\ntoken gen · widget HTML\nview token issuance" as EMBED_SVC
+    component "Link Service\nRedis-cached\nlocale lookup" as LINK_SVC
+    component "Fraud Service\nIP sliding window\ncampaign velocity" as FRAUD_SVC
+    component "View Token Service\nHMAC signed\none-time use" as VT_SVC
+    component "Billing Service\nper-view cost\nbudget enforcement" as BILL_SVC
+    component "Ad Lifecycle Service\nstatus transitions" as LIFECYCLE_SVC
+}
+
+'==========================
+' Payment Services
+'==========================
+
+package "Payment Services" {
+    component "Stripe Payment Service\nPaymentIntent creation\nwebhook verification" as STRIPE_SVC
+    component "Stripe Event\nDedup Service\n(REQUIRES_NEW txn)" as DEDUP_SVC
+    component "Payment Rate Limiter\nRedis counter\n5/hour/advertiser" as PAY_RL
 }
 
 '==========================
 ' Async Processing
 '==========================
 
-package "Async Processing" {
-    component "RabbitMQ" <<Queue>> as MQ
-    component "Worker" as WORKER
-    component "Validation Service" as VALID
-    component "Feature Processing\n(translation · speech eval)" as FEAT
-    component "Human Review Queue" as HR
-    component "AI Models\n(mock / local)" as AI
+package "Async Processing (RabbitMQ)" {
+    component "Processing Queue\nService\n(producer)" as MQ_PROD
+    component "RabbitMQ\nad-processing queue" <<Queue>> as MQ
+    component "Worker Consumer\n@RabbitListener" as WORKER
+    component "Validation Service\nwraps ModerationService" as VALID_SVC
+    component "Feature Processing\nService\n(translation · speech)" as FEAT_SVC
+    component "Ad Status Event\nPublisher\n(SSE fan-out)" as SSE_PUB
+}
+
+'==========================
+' AI Provider Abstraction
+'==========================
+
+package "AI Provider Abstraction (app.ai.provider)" {
+    component "Moderation\nService" <<interface>> as MOD_IF
+    component "Translation\nService" <<interface>> as TRANS_IF
+    component "Speech Eval\nService" <<interface>> as SPEECH_IF
+    component "Mock\nImpl" as AI_MOCK
+    component "Local\nImpl\n(localhost:9000)" as AI_LOCAL
+    component "HuggingFace\nImpl\n(Gradio API)" as AI_HF
+}
+
+'==========================
+' Security & Config
+'==========================
+
+package "Security & Config" {
+    component "JWT Token Provider\nHS256 · 15min expiry" as JWT_PROV
+    component "Token Hasher\nSHA-256" as TOKEN_HASH
+    component "Current User Service\nemail→User lookup" as CURR_USER
+    component "CORS Config\n(CorsProperties)" as CORS_CFG
+    component "Client IP Resolver\n(X-Forwarded-For)" as IP_RESOLVE
 }
 
 '==========================
 ' Storage
 '==========================
 
-package "Storage" {
-    database "MySQL\n(users · campaigns · ads\nad_versions · views · ad_links)" as DB
-    database "Redis\n(variant cache)" as REDIS
-    component "S3\n(video blobs)" as S3
-    component "CDN" as CDN
+package "Storage & Data" {
+    database "MySQL 8.0\n(TiDB Cloud prod)\nFlyway V1–V9" as DB
+    database "Redis 7\n(Upstash prod)\nfraud · cache · tokens" as REDIS
+    component "AWS S3\n(video blobs)" as S3
+    database "RabbitMQ\nManagement\n(5672 / 15672)" as MQ_MGMT
 }
 
 '==========================
-' Actors → Client
+' Monitoring
 '==========================
+
+package "Monitoring" {
+    component "Spring Boot\nActuator\n/health · /ping" as ACTUATOR
+}
+
+'==========================================================
+' CONNECTIONS — Actors to Client
+'==========================================================
 
 Advertiser --> ADV_UI
 Publisher  --> PUB_UI
 Viewer     --> PUB_UI
 
-'==========================
-' Upload flow
-'==========================
+'==========================================================
+' CONNECTIONS — Client to Security Filters
+'==========================================================
 
-ADV_UI --> AUTH
-ADV_UI --> STORE_CTRL
-ADV_UI --> UPLOAD_CTRL
-ADV_UI --> CAMP_CTRL
-ADV_UI --> VAL_CTRL
-ADV_UI --> ADLINK_CTRL
+ADV_UI -down-> RATE_FILT
+PUB_UI -down-> RATE_FILT
+STRIPE_WH -down-> RATE_FILT
 
-STORE_CTRL  --> S3           : presigned URL
-UPLOAD_CTRL --> DB           : create Ad
-UPLOAD_CTRL --> MQ           : enqueue adId
+RATE_FILT --> HDR_FILT : pass
+HDR_FILT  --> JWT_FILT : pass
 
-'==========================
-' Async pipeline
-'==========================
+'==========================================================
+' CONNECTIONS — Security to Auth
+'==========================================================
 
-MQ     --> WORKER
+JWT_FILT --> AUTH_CTRL : /auth/**
+JWT_FILT --> AUTH_SVC
 
-WORKER --> VALID
-VALID  --> AI
-VALID  --> HR
+AUTH_SVC --> DB           : user lookup
+AUTH_SVC --> JWT_PROV     : issue/validate tokens
+AUTH_SVC --> TOKEN_HASH   : hash refresh tokens
 
-WORKER --> FEAT
-FEAT   --> AI
-FEAT   --> S3                : translated variant
-FEAT   --> DB                : save AdVersion
+'==========================================================
+' CONNECTIONS — Upload Flow (Advertiser)
+'==========================================================
 
-WORKER --> EMBED_SVC         : ad live → generate token
-WORKER --> DB                : update status
+ADV_UI --> STORE_CTRL     : POST /presign
+ADV_UI --> UPLOAD_CTRL    : POST /confirm
+ADV_UI --> CAMP_CTRL      : /campaigns/**
+ADV_UI --> VAL_CTRL       : /validation · /review
+ADV_UI --> ADLINK_CTRL    : /ads/{id}/link
+ADV_UI --> ANALYTICS_CTRL : /analytics/**
 
-'==========================
-' Embed / link retrieval
-'==========================
+STORE_CTRL  --> STORAGE_SVC   : presign URL
+STORAGE_SVC --> S3            : presigned PUT
 
-ADLINK_CTRL --> EMBED_SVC
-EMBED_SVC   --> DB           : persist AdLink
+UPLOAD_CTRL --> STORAGE_SVC   : verify object
+STORAGE_SVC --> S3            : HEAD metadata
+UPLOAD_CTRL --> DB            : create Ad (status=PENDING)
+UPLOAD_CTRL --> MQ_PROD       : enqueue adId
+MQ_PROD     --> MQ            : publish
 
-VAL_CTRL    --> DB
-VAL_CTRL    --> HR
-CAMP_CTRL   --> DB
+CAMP_CTRL   --> CURR_USER     : ownership check
+CAMP_CTRL   --> DB            : CRUD
 
-'==========================
-' Widget serving (Viewer)
-'==========================
+VAL_CTRL    --> CURR_USER     : ownership check
+VAL_CTRL    --> LIFECYCLE_SVC : admin review
+VAL_CTRL    --> SSE_PUB       : subscribe SSE
+VAL_CTRL    --> DB            : status check
 
-PUB_UI    --> EMBED_CTRL     : load iframe
-EMBED_CTRL --> EMBED_SVC     : token → adId
+ADLINK_CTRL --> EMBED_SVC     : get embed URL
+ADLINK_CTRL --> DB            : lookup AdLink
 
-PUB_UI    --> AD_CTRL        : widget JS fetch
-AD_CTRL   --> FRAUD
-AD_CTRL   --> LINK_SVC
-LINK_SVC  --> REDIS
-LINK_SVC  --> DB
-AD_CTRL   --> BILL
-BILL      --> DB             : persist View · update spent
-AD_CTRL   --> CDN            : video URL
+ANALYTICS_CTRL --> CURR_USER  : ownership check
+ANALYTICS_CTRL --> DB         : aggregate queries
 
-'==========================
-' Publisher link lookup
-'==========================
+'==========================================================
+' CONNECTIONS — Async Pipeline
+'==========================================================
 
-Publisher  --> LINK_CTRL
-LINK_CTRL  --> LINK_SVC
+MQ          --> WORKER        : consume adId
+WORKER      --> VALID_SVC     : validate ad
+WORKER      --> LIFECYCLE_SVC : status transitions
+WORKER      --> SSE_PUB       : publish status events
+
+VALID_SVC   --> MOD_IF        : delegate moderation
+MOD_IF      --> AI_MOCK       : mock impl
+MOD_IF      --> AI_LOCAL      : local impl
+MOD_IF      --> AI_HF         : huggingface impl
+
+WORKER      --> FEAT_SVC      : process features
+FEAT_SVC    --> TRANS_IF      : translate
+FEAT_SVC    --> SPEECH_IF     : speech evaluation
+TRANS_IF    --> AI_MOCK
+TRANS_IF    --> AI_LOCAL
+TRANS_IF    --> AI_HF
+SPEECH_IF   --> AI_MOCK
+SPEACH_IF   --> AI_LOCAL
+
+FEAT_SVC    --> S3            : store translated variant
+FEAT_SVC    --> DB            : persist AdVersion
+
+WORKER      --> EMBED_SVC     : generate embed link (ad live)
+WORKER      --> DB            : update ad status
+
+LIFECYCLE_SVC --> DB          : status transitions
+SSE_PUB      --> REDIS        : view token nonce (via VT_SVC)
+
+'==========================================================
+' CONNECTIONS — Widget Serving (Viewer)
+'==========================================================
+
+PUB_UI      --> EMBED_CTRL    : load iframe
+EMBED_CTRL  --> EMBED_SVC     : token → adId
+EMBED_SVC   --> DB            : resolve AdLink
+EMBED_SVC   --> VT_SVC        : issue view token
+VT_SVC      --> REDIS         : store nonce
+
+PUB_UI      --> AD_CTRL       : widget JS fetch
+AD_CTRL     --> IP_RESOLVE    : get real IP
+AD_CTRL     --> VT_SVC        : validate view token
+AD_CTRL     --> FRAUD_SVC     : fraud check
+FRAUD_SVC   --> REDIS         : sliding window + velocity
+AD_CTRL     --> BILL_SVC      : record view
+BILL_SVC    --> DB            : View + UPDATE campaign.spent (FOR UPDATE)
+AD_CTRL     --> S3            : presigned GET URLs
+
+'==========================================================
+' CONNECTIONS — Payment Flow
+'==========================================================
+
+ADV_UI      --> PAY_CTRL      : POST /fund
+PAY_CTRL    --> PAY_RL        : rate limit check
+PAY_RL      --> REDIS         : counter
+PAY_CTRL    --> CURR_USER     : ownership check
+PAY_CTRL    --> STRIPE_SVC    : create PaymentIntent
+STRIPE_SVC  --> S3            : (none — Stripe API call)
+PAY_CTRL    --> DB            : persist Payment
+
+STRIPE_JS   --> STRIPE_SVC    : confirm payment (client-side via clientSecret)
+
+STRIPE_WH   --> PAY_CTRL      : POST /webhook
+PAY_CTRL    --> STRIPE_SVC    : verify signature
+STRIPE_SVC  --> DEDUP_SVC     : dedup event
+DEDUP_SVC   --> DB            : INSERT stripe_events
+PAY_CTRL    --> DB            : mark Payment SUCCEEDED
+PAY_CTRL    --> DB            : campaign.budget += amount (FOR UPDATE)
+
+'==========================================================
+' CONNECTIONS — Publisher Link Lookup
+'==========================================================
+
+Publisher   --> LINK_CTRL     : GET /links/{adId}
+LINK_CTRL   --> LINK_SVC      : Redis-cached lookup
+LINK_SVC    --> REDIS         : cache read
+LINK_SVC    --> DB            : fallback query
+
+'==========================================================
+' CONNECTIONS — Monitoring
+'==========================================================
+
+ADV_UI      --> ACTUATOR      : /actuator/health
+ADMIN       --> ACTUATOR      : /actuator/** (full)
+
+'==========================================================
+' STORAGE interconnections
+'==========================================================
+
+DB -[hidden]right-> REDIS
+REDIS -[hidden]right-> S3
 
 @enduml
