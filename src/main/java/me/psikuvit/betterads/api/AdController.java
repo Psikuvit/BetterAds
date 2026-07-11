@@ -10,6 +10,7 @@ import me.psikuvit.betterads.fraud.ViewTokenService;
 import me.psikuvit.betterads.links.LinkService;
 import me.psikuvit.betterads.security.ClientIpResolver;
 import me.psikuvit.betterads.storage.StorageService;
+import me.psikuvit.betterads.storage.dto.AdStatus;
 import me.psikuvit.betterads.storage.entities.Ad;
 import me.psikuvit.betterads.storage.entities.AdVersion;
 import me.psikuvit.betterads.storage.repositories.AdRepository;
@@ -100,6 +101,57 @@ public class AdController {
         log.info("Served adId={} to ip={}, requestedLocale={}, resolvedLocale={}, variants={}",
                 id, ip, locale, best.getLocale(), urls.size());
         return ResponseEntity.ok(Map.of("adId", id, "variants", urls));
+    }
+
+    @GetMapping("/{id}/playlist")
+    public ResponseEntity<?> servePlaylist(@PathVariable Long id,
+                                           @RequestParam(required = false) String locale,
+                                           @RequestParam(required = false) String vt,
+                                           HttpServletRequest request) {
+        String ip = clientIpResolver.resolve(request);
+        String deviceInfo = request.getHeader("User-Agent");
+        boolean suspiciousUserAgent = deviceInfo == null || deviceInfo.isBlank();
+
+        Ad seedAd = adRepository.findById(id).orElse(null);
+        if (seedAd == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Long campaignId = seedAd.getCampaignId();
+
+        boolean trustedByToken = !suspiciousUserAgent && viewTokenService.validateAndConsume(vt, id);
+        if (!trustedByToken && fraudService.isLikelyFraud(ip)) {
+            log.warn("Blocked fraudulent playlist request from ip={}", ip);
+            return tooManyRequests(request, "Too many requests from this IP");
+        }
+        if (campaignId != null && fraudService.isCampaignOverVelocity(campaignId)) {
+            log.warn("Blocked playlist request — campaign {} exceeded view velocity cap", campaignId);
+            return tooManyRequests(request, "This ad is receiving too many requests, please try again shortly");
+        }
+
+        List<Ad> allAds = adRepository.findByCampaignIdAndStatus(campaignId, AdStatus.LIVE);
+        if (allAds.isEmpty()) {
+            return ResponseEntity.ok(Map.of("ads", List.of()));
+        }
+
+        List<Map<String, Object>> playlist = allAds.stream().map(ad -> {
+            List<AdVersion> versions = adVersionRepository.findByAdId(ad.getId());
+            List<AdVersion> variants = resolveVariants(versions, locale);
+            if (variants.isEmpty()) {
+                return null;
+            }
+            AdVersion best = variants.getFirst();
+            billingService.recordView(best.getId(), ip, deviceInfo);
+            List<String> urls = variants.stream()
+                    .map(v -> storageService.presignGetUrl(extractStorageKey(v.getStorageKey()), Duration.ofHours(2)))
+                    .toList();
+            String token = viewTokenService.issueToken(ad.getId());
+            return Map.<String, Object>of("adId", ad.getId(), "variants", urls, "vt", token);
+        }).filter(item -> item != null).toList();
+
+        log.info("Served playlist for campaignId={} ({} ads) to ip={}, requestedLocale={}",
+                campaignId, playlist.size(), ip, locale);
+        return ResponseEntity.ok(Map.of("ads", playlist));
     }
 
     @GetMapping("/{id}/link")

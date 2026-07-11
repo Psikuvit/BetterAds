@@ -57,45 +57,91 @@ public class EmbedService {
     public String widgetHtml(Long adId) {
         String viewToken = viewTokenService.issueToken(adId);
         return """
-                <!DOCTYPE html>
-                <html>
-                <head>
-                  <meta charset="UTF-8">
-                  <meta name="viewport" content="width=device-width, initial-scale=1">
-                  <style>
-                    * { margin: 0; padding: 0; box-sizing: border-box; }
-                    body { background: #000; display: flex; align-items: center;
-                           justify-content: center; width: 100vw; height: 100vh; }
-                    video { width: 100%%; height: 100%%; object-fit: contain; }
-                    #error { color: #fff; font-family: sans-serif; font-size: 14px; }
-                  </style>
-                </head>
-                <body>
-                  <video id="ad" controls autoplay muted playsinline></video>
-                  <div id="error" style="display:none">Ad unavailable</div>
-                  <script>
-                    (function() {
-                      var adId = %d;
-                      var vt = %s;
-                      var locale = (navigator.language || 'en').split('-')[0];
-                      fetch('/api/ads/' + adId + '?locale=' + locale + '&vt=' + encodeURIComponent(vt))
-                        .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); })
-                        .then(function(data) {
-                          if (data.variants && data.variants.length > 0) {
-                            document.getElementById('ad').src = data.variants[0];
-                          } else {
-                            showError();
-                          }
-                        })
-                        .catch(function() { showError(); });
-                      function showError() {
-                        document.getElementById('ad').style.display = 'none';
-                        document.getElementById('error').style.display = 'block';
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; }
+                body { background: #000; display: flex; align-items: center;
+                       justify-content: center; width: 100vw; height: 100vh; overflow: hidden; }
+                #wrap { position: relative; width: 100%%; height: 100%%; }
+                video { width: 100%%; height: 100%%; object-fit: contain;
+                        pointer-events: none; }
+                #shield { position: absolute; inset: 0; z-index: 2; background: transparent; }
+                #error { color: #fff; font-family: sans-serif; font-size: 14px; }
+              </style>
+            </head>
+            <body oncontextmenu="return false">
+              <div id="wrap">
+                <video id="ad" autoplay muted playsinline
+                       disablepictureinpicture
+                       controlslist="nodownload noplaybackrate nofullscreen"></video>
+                <div id="shield"></div>
+              </div>
+              <div id="error" style="display:none">Ad unavailable</div>
+              <script>
+                (function() {
+                  var adId = %d;
+                  var vt = %s;
+                  var locale = (navigator.language || 'en').split('-')[0];
+                  var video = document.getElementById('ad');
+                  var expectedTime = 0;
+                  var playlist = [];
+                  var currentIndex = 0;
+
+                  video.addEventListener('timeupdate', function() {
+                    if (Math.abs(video.currentTime - expectedTime) > 1) {
+                      video.currentTime = expectedTime;
+                    }
+                    expectedTime = video.currentTime;
+                  });
+                  video.addEventListener('seeking', function() {
+                    video.currentTime = expectedTime;
+                  });
+                  video.addEventListener('pause', function() {
+                    if (!video.ended) {
+                      video.play().catch(function(){});
+                    }
+                  });
+                  document.addEventListener('keydown', function(e) {
+                    e.preventDefault();
+                  });
+
+                  function playCurrent() {
+                    if (playlist.length === 0) { showError(); return; }
+                    var item = playlist[currentIndex];
+                    video.src = item.variants[0];
+                    video.play().catch(function(){});
+                  }
+
+                  video.addEventListener('ended', function() {
+                    currentIndex = (currentIndex + 1) %% playlist.length;
+                    playCurrent();
+                  });
+
+                  fetch('/api/ads/' + adId + '/playlist?locale=' + locale + '&vt=' + encodeURIComponent(vt))
+                    .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); })
+                    .then(function(data) {
+                      if (data.ads && data.ads.length > 0) {
+                        playlist = data.ads;
+                        currentIndex = 0;
+                        playCurrent();
+                      } else {
+                        showError();
                       }
-                    })();
-                  </script>
-                </body>
-                </html>
-                """.formatted(adId, "'" + viewToken + "'");
+                    })
+                    .catch(function() { showError(); });
+
+                  function showError() {
+                    video.style.display = 'none';
+                    document.getElementById('error').style.display = 'block';
+                  }
+                })();
+              </script>
+            </body>
+            </html>
+            """.formatted(adId, "'" + viewToken + "'");
     }
 }
