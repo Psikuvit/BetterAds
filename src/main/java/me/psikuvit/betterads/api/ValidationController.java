@@ -89,12 +89,16 @@ public class ValidationController {
                     .body(Map.of("error", "decision must be one of: " + VALID_DECISIONS));
         }
         return adRepository.findById(id).map(ad -> {
-            if (ad.getStatus() != AdStatus.FLAGGED) {
-                log.warn("Rejected review request for adId={}: not pending human review (status={})", id, ad.getStatus());
+            if (ad.getStatus() == AdStatus.LIVE || ad.getStatus() == AdStatus.REJECTED) {
+                log.warn("Rejected review request for adId={}: terminal status (status={})", id, ad.getStatus());
                 return ResponseEntity.badRequest()
-                        .body(Map.of("error", "ad is not pending human review (status=" + ad.getStatus() + ")"));
+                        .body(Map.of("error", "ad is in a terminal status (" + ad.getStatus() + ")"));
             }
             if ("approve".equals(decision)) {
+                if (ad.getStatus() != AdStatus.FLAGGED) {
+                    return ResponseEntity.badRequest()
+                            .body(Map.of("error", "approval only allowed for flagged ads (status=" + ad.getStatus() + ")"));
+                }
                 ad.setStatus(AdStatus.AWAITING_FEATURES);
                 adRepository.save(ad);
                 eventPublisher.publish(id, ad.getStatus());

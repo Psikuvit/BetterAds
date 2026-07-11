@@ -18,12 +18,14 @@ import me.psikuvit.betterads.storage.repositories.AdVersionRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/api/ads")
@@ -149,7 +151,7 @@ public class AdController {
                     "url", url,
                     "locale", best.getLocale() != null ? best.getLocale() : "",
                     "vt", token);
-        }).filter(item -> item != null).toList();
+        }).filter(Objects::nonNull).toList();
 
         log.info("Served playlist for campaignId={} ({} ads) to ip={}, requestedLocale={}",
                 campaignId, playlist.size(), ip, locale);
@@ -166,6 +168,16 @@ public class AdController {
                     return ResponseEntity.ok(Map.of("embedUrl", url, "embedSnippet", snippet, "token", link.getToken()));
                 })
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> deleteAd(@PathVariable Long id) {
+        return adRepository.findById(id).map(ad -> {
+            adRepository.delete(ad);
+            log.info("Ad {} deleted by admin", id);
+            return ResponseEntity.ok(Map.of("adId", id, "deleted", true));
+        }).orElse(ResponseEntity.notFound().build());
     }
 
     private ResponseEntity<ErrorResponse> tooManyRequests(HttpServletRequest request, String message) {
