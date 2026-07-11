@@ -59,6 +59,7 @@ public class HuggingFaceTranslationService implements TranslationService {
         this.webClient = WebClient.builder()
                 .baseUrl(spaceUrl)
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .codecs(cfg -> cfg.defaultCodecs().maxInMemorySize(64 * 1024 * 1024))
                 .build();
     }
 
