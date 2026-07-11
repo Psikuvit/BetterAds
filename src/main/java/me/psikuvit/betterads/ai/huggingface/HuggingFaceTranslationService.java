@@ -189,7 +189,16 @@ public class HuggingFaceTranslationService implements TranslationService {
         }
 
         JsonNode result = objectMapper.readTree(event.data());
-        JsonNode fileData = result.get(0);
+        // The response is a VideoData: { "video": FileData, "subtitles": null }
+        // or a flat array [FileData]. Handle both.
+        JsonNode fileData;
+        if (result.isArray()) {
+            fileData = result.get(0);
+        } else if (result.has("video")) {
+            fileData = result.get("video");
+        } else {
+            fileData = result;
+        }
         if (fileData == null || fileData.isNull()) {
             throw new IllegalStateException("Complete event carried no output file for event_id=" + eventId);
         }
