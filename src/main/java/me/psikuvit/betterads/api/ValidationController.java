@@ -170,7 +170,7 @@ public class ValidationController {
             if (locales.isEmpty()) {
                 return ResponseEntity.ok(Map.of("adId", id, "status", ad.getStatus()));
             }
-            return ResponseEntity.accepted(Map.of("adId", id, "status", ad.getStatus()));
+            return ResponseEntity.accepted().body(Map.of("adId", id, "status", ad.getStatus()));
         }).orElse(ResponseEntity.notFound().build());
     }
 
