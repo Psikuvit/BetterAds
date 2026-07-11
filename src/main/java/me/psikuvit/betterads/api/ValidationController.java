@@ -10,6 +10,8 @@ import me.psikuvit.betterads.storage.entities.User;
 import me.psikuvit.betterads.storage.repositories.AdRepository;
 import me.psikuvit.betterads.storage.repositories.CampaignRepository;
 import me.psikuvit.betterads.embed.EmbedService;
+import me.psikuvit.betterads.storage.entities.AdVersion;
+import me.psikuvit.betterads.storage.repositories.AdVersionRepository;
 import me.psikuvit.betterads.worker.AdLifecycleService;
 import me.psikuvit.betterads.worker.AdStatusEventPublisher;
 import org.springframework.http.HttpStatus;
@@ -37,16 +39,19 @@ public class ValidationController {
     private final AdLifecycleService adLifecycleService;
     private final AdStatusEventPublisher eventPublisher;
     private final EmbedService embedService;
+    private final AdVersionRepository adVersionRepository;
 
     public ValidationController(AdRepository adRepository, CampaignRepository campaignRepository,
                                 CurrentUserService currentUserService, AdLifecycleService adLifecycleService,
-                                AdStatusEventPublisher eventPublisher, EmbedService embedService) {
+                                AdStatusEventPublisher eventPublisher, EmbedService embedService,
+                                AdVersionRepository adVersionRepository) {
         this.adRepository = adRepository;
         this.campaignRepository = campaignRepository;
         this.currentUserService = currentUserService;
         this.adLifecycleService = adLifecycleService;
         this.eventPublisher = eventPublisher;
         this.embedService = embedService;
+        this.adVersionRepository = adVersionRepository;
     }
 
     @GetMapping("/{id}/events")
@@ -133,6 +138,13 @@ public class ValidationController {
                     ? List.of()
                     : request.locales();
             if (locales.isEmpty()) {
+                AdVersion originalVersion = new AdVersion();
+                originalVersion.setAdId(ad.getId());
+                originalVersion.setLocale("en");
+                originalVersion.setStorageKey(ad.getStorageKey());
+                originalVersion.setFeature(null);
+                adVersionRepository.save(originalVersion);
+
                 ad.setStatus(AdStatus.LIVE);
                 adRepository.save(ad);
                 eventPublisher.publish(id, ad.getStatus());
