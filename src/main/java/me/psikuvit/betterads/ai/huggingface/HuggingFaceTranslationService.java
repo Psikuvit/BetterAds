@@ -129,8 +129,9 @@ public class HuggingFaceTranslationService implements TranslationService {
                 "meta", Map.of("_type", "gradio.FileData"),
                 "orig_name", filename
         );
-        // dub_video takes a single input (video_path) - no trailing text param.
-        Map<String, Object> body = Map.of("data", List.of(fileData));
+        // dub_video expects a VideoData input: { video: FileData, subtitles: null }
+        Map<String, Object> videoData = Map.of("video", fileData);
+        Map<String, Object> body = Map.of("data", List.of(videoData));
 
         String response = webClient.post()
                 .uri("/gradio_api/call/dub_video")
