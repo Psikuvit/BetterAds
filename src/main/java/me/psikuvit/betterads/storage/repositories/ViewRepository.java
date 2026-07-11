@@ -2,6 +2,7 @@ package me.psikuvit.betterads.storage.repositories;
 
 import me.psikuvit.betterads.storage.entities.View;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -27,4 +28,8 @@ public interface ViewRepository extends JpaRepository<View, Long> {
             "LEFT JOIN views v ON v.ad_version_id = av.id " +
             "WHERE a.campaign_id = :campaignId GROUP BY a.id, a.title", nativeQuery = true)
     List<Object[]> viewsByAd(@Param("campaignId") Long campaignId);
+
+    @Modifying
+    @Query("DELETE FROM View v WHERE v.adVersionId IN :versionIds")
+    void deleteByAdVersionIdIn(@Param("versionIds") List<Long> versionIds);
 }

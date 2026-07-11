@@ -1,6 +1,8 @@
 package me.psikuvit.betterads.billing;
 
 import lombok.extern.slf4j.Slf4j;
+import me.psikuvit.betterads.storage.AdCleanupService;
+import me.psikuvit.betterads.storage.dto.CampaignStatus;
 import me.psikuvit.betterads.storage.entities.View;
 import me.psikuvit.betterads.storage.repositories.AdRepository;
 import me.psikuvit.betterads.storage.repositories.AdVersionRepository;
@@ -25,15 +27,18 @@ public class BillingService {
     private final AdVersionRepository adVersionRepository;
     private final AdRepository adRepository;
     private final CampaignRepository campaignRepository;
+    private final AdCleanupService adCleanupService;
 
     public BillingService(ViewRepository viewRepository,
                           AdVersionRepository adVersionRepository,
                           AdRepository adRepository,
-                          CampaignRepository campaignRepository) {
+                          CampaignRepository campaignRepository,
+                          AdCleanupService adCleanupService) {
         this.viewRepository = viewRepository;
         this.adVersionRepository = adVersionRepository;
         this.adRepository = adRepository;
         this.campaignRepository = campaignRepository;
+        this.adCleanupService = adCleanupService;
 
         rates.put("default", new BigDecimal("0.001"));
         rates.put("US", new BigDecimal("0.0015"));
@@ -80,8 +85,11 @@ public class BillingService {
                                     BigDecimal newSpent = campaign.getSpent().add(cost);
 
                                     if (newSpent.compareTo(campaign.getBudget()) > 0) {
-                                        log.warn("Campaign {} budget exhausted (budget={}, spent={}), skipping view",
+                                        log.warn("Campaign {} budget exhausted (budget={}, spent={}), deleting all ads",
                                                 campaign.getId(), campaign.getBudget(), campaign.getSpent());
+                                        campaign.setStatus(CampaignStatus.COMPLETED);
+                                        campaignRepository.save(campaign);
+                                        adCleanupService.deleteCampaignAds(campaign.getId());
                                         return false;
                                     }
 

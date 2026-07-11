@@ -8,4 +8,5 @@ import java.util.Optional;
 public interface AdLinkRepository extends JpaRepository<AdLink, Long> {
     Optional<AdLink> findByToken(String token);
     Optional<AdLink> findByAdId(Long adId);
+    void deleteByAdId(Long adId);
 }

@@ -9,6 +9,7 @@ import me.psikuvit.betterads.fraud.FraudService;
 import me.psikuvit.betterads.fraud.ViewTokenService;
 import me.psikuvit.betterads.links.LinkService;
 import me.psikuvit.betterads.security.ClientIpResolver;
+import me.psikuvit.betterads.storage.AdCleanupService;
 import me.psikuvit.betterads.storage.StorageService;
 import me.psikuvit.betterads.storage.dto.AdStatus;
 import me.psikuvit.betterads.storage.entities.Ad;
@@ -43,12 +44,13 @@ public class AdController {
     private final ViewTokenService viewTokenService;
     private final ClientIpResolver clientIpResolver;
     private final StorageService storageService;
+    private final AdCleanupService adCleanupService;
 
     public AdController(LinkService linkService, FraudService fraudService,
                         BillingService billingService, AdRepository adRepository,
                         AdVersionRepository adVersionRepository, EmbedService embedService,
                         ViewTokenService viewTokenService, ClientIpResolver clientIpResolver,
-                        StorageService storageService) {
+                        StorageService storageService, AdCleanupService adCleanupService) {
         this.linkService = linkService;
         this.fraudService = fraudService;
         this.billingService = billingService;
@@ -58,6 +60,7 @@ public class AdController {
         this.viewTokenService = viewTokenService;
         this.clientIpResolver = clientIpResolver;
         this.storageService = storageService;
+        this.adCleanupService = adCleanupService;
     }
 
     @GetMapping("/{id}")
@@ -174,7 +177,7 @@ public class AdController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> deleteAd(@PathVariable Long id) {
         return adRepository.findById(id).map(ad -> {
-            adRepository.delete(ad);
+            adCleanupService.deleteAd(ad);
             log.info("Ad {} deleted by admin", id);
             return ResponseEntity.ok(Map.of("adId", id, "deleted", true));
         }).orElse(ResponseEntity.notFound().build());
