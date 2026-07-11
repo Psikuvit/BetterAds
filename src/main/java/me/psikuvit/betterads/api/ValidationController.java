@@ -9,6 +9,7 @@ import me.psikuvit.betterads.storage.entities.Campaign;
 import me.psikuvit.betterads.storage.entities.User;
 import me.psikuvit.betterads.storage.repositories.AdRepository;
 import me.psikuvit.betterads.storage.repositories.CampaignRepository;
+import me.psikuvit.betterads.embed.EmbedService;
 import me.psikuvit.betterads.worker.AdLifecycleService;
 import me.psikuvit.betterads.worker.AdStatusEventPublisher;
 import org.springframework.http.HttpStatus;
@@ -35,15 +36,17 @@ public class ValidationController {
     private final CurrentUserService currentUserService;
     private final AdLifecycleService adLifecycleService;
     private final AdStatusEventPublisher eventPublisher;
+    private final EmbedService embedService;
 
     public ValidationController(AdRepository adRepository, CampaignRepository campaignRepository,
                                 CurrentUserService currentUserService, AdLifecycleService adLifecycleService,
-                                AdStatusEventPublisher eventPublisher) {
+                                AdStatusEventPublisher eventPublisher, EmbedService embedService) {
         this.adRepository = adRepository;
         this.campaignRepository = campaignRepository;
         this.currentUserService = currentUserService;
         this.adLifecycleService = adLifecycleService;
         this.eventPublisher = eventPublisher;
+        this.embedService = embedService;
     }
 
     @GetMapping("/{id}/events")
