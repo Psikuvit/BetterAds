@@ -98,9 +98,7 @@ public class HuggingFaceTranslationService implements TranslationService {
             long elapsedMs = System.currentTimeMillis() - start;
             log.warn("[huggingface] translation call failed for key={}, targetLocale={} after {}ms: {}",
                     storageKey, targetLocale, elapsedMs, e.getMessage(), e);
-            // A technical failure shouldn't block the whole ad from going live -
-            // fall back to serving the untranslated original for this locale.
-            return storageKey;
+            throw new RuntimeException("HuggingFace translation failed for " + storageKey + " -> " + targetLocale, e);
         }
     }
 
