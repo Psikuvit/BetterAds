@@ -67,17 +67,21 @@ public class EmbedService {
                 body { background: #000; display: flex; align-items: center;
                        justify-content: center; width: 100vw; height: 100vh; overflow: hidden; }
                 #wrap { position: relative; width: 100%%; height: 100%%; }
-                video { width: 100%%; height: 100%%; object-fit: contain;
-                        pointer-events: none; }
+                video { position: absolute; top: 0; left: 0; width: 100%%; height: 100%%;
+                        object-fit: contain; pointer-events: none; }
                 #shield { position: absolute; inset: 0; z-index: 2; background: transparent; }
                 #error { color: #fff; font-family: sans-serif; font-size: 14px; }
               </style>
             </head>
             <body oncontextmenu="return false">
               <div id="wrap">
-                <video id="ad" autoplay playsinline
+                <video id="a" autoplay playsinline
                        disablepictureinpicture
                        controlslist="nodownload noplaybackrate nofullscreen"></video>
+                <video id="b" playsinline muted
+                       disablepictureinpicture
+                       controlslist="nodownload noplaybackrate nofullscreen"
+                       style="display:none"></video>
                 <div id="shield"></div>
               </div>
               <div id="error" style="display:none">Ad unavailable</div>
@@ -86,39 +90,78 @@ public class EmbedService {
                   var adId = %d;
                   var vt = %s;
                   var locale = (navigator.language || 'en').split('-')[0];
-                  var video = document.getElementById('ad');
+                  var primary = document.getElementById('a');
+                  var preload = document.getElementById('b');
+                  var active = primary;
+                  var standby = preload;
                   var expectedTime = 0;
                   var playlist = [];
                   var currentIndex = 0;
 
-                  video.addEventListener('timeupdate', function() {
-                    if (Math.abs(video.currentTime - expectedTime) > 1) {
-                      video.currentTime = expectedTime;
+                  function reportSize(v) {
+                    if (v.videoWidth && v.videoHeight) {
+                      try { parent.postMessage({ type: 'ad-resize', width: v.videoWidth, height: v.videoHeight }, '*'); } catch(e) {}
                     }
-                    expectedTime = video.currentTime;
+                  }
+
+                  active.addEventListener('loadedmetadata', function() { reportSize(active); });
+
+                  active.addEventListener('timeupdate', function() {
+                    if (Math.abs(active.currentTime - expectedTime) > 1) {
+                      active.currentTime = expectedTime;
+                    }
+                    expectedTime = active.currentTime;
                   });
-                  video.addEventListener('seeking', function() {
-                    video.currentTime = expectedTime;
+                  active.addEventListener('seeking', function() {
+                    active.currentTime = expectedTime;
                   });
-                  video.addEventListener('pause', function() {
-                    if (!video.ended) {
-                      video.play().catch(function(){});
+                  active.addEventListener('pause', function() {
+                    if (!active.ended) {
+                      active.play().catch(function(){});
                     }
                   });
                   document.addEventListener('keydown', function(e) {
                     e.preventDefault();
                   });
 
-                  function playCurrent() {
-                    if (playlist.length === 0) { showError(); return; }
-                    var item = playlist[currentIndex];
-                    video.src = item.url;
-                    video.play().catch(function(){});
+                  function swap() {
+                    var tmp = active;
+                    active = standby;
+                    standby = tmp;
+                    active.style.display = '';
+                    standby.style.display = 'none';
+                    standby.pause();
+                    standby.removeAttribute('src');
+                    standby.load();
                   }
 
-                  video.addEventListener('ended', function() {
+                  function playItem(idx) {
+                    var item = playlist[idx];
+                    if (!item) { showError(); return; }
+                    active.src = item.url;
+                    active.load();
+                    active.play().catch(function(){});
+                  }
+
+                  function preloadNext() {
+                    var nextIdx = (currentIndex + 1) %% playlist.length;
+                    var item = playlist[nextIdx];
+                    if (item) {
+                      standby.src = item.url;
+                      standby.load();
+                    }
+                  }
+
+                  active.addEventListener('ended', function() {
                     currentIndex = (currentIndex + 1) %% playlist.length;
-                    playCurrent();
+                    swap();
+                    expectedTime = 0;
+                    active.play().catch(function(){});
+                    preloadNext();
+                  });
+
+                  preload.addEventListener('canplaythrough', function() {
+                    preload.removeEventListener('canplaythrough', arguments.callee);
                   });
 
                   fetch('/api/ads/' + adId + '/playlist?locale=' + locale + '&vt=' + encodeURIComponent(vt))
@@ -127,7 +170,8 @@ public class EmbedService {
                       if (data.ads && data.ads.length > 0) {
                         playlist = data.ads;
                         currentIndex = 0;
-                        playCurrent();
+                        playItem(0);
+                        preloadNext();
                       } else {
                         showError();
                       }
@@ -135,7 +179,8 @@ public class EmbedService {
                     .catch(function() { showError(); });
 
                   function showError() {
-                    video.style.display = 'none';
+                    primary.style.display = 'none';
+                    preload.style.display = 'none';
                     document.getElementById('error').style.display = 'block';
                   }
                 })();
