@@ -89,11 +89,10 @@ runs inside a single entrypoint, `BetterAdsApplication`.
    - `pending → validating`: calls `ValidationService`, which delegates to
      a `ModerationService` implementation and gets back `APPROVED`,
      `FLAGGED`, or `REJECTED`.
-   - On `APPROVED`, `AdLifecycleService.moveToLive()` takes over:
-     `validating → processing` (runs `FeatureProcessingService`, which
-     translates the source video and evaluates speech quality, then
-     persists an `AdVersion` — a locale-specific rendition) `→ live`,
-     then generates an embed link via `EmbedService`.
+   - On `APPROVED`, the ad reaches `AWAITING_FEATURES`. The advertiser can
+     either select French translation (triggers `moveToLive()` → processing
+     → live) or skip translation (ad goes straight to `LIVE` with the
+     original video).
    - On `FLAGGED`, status becomes `flagged` and the ad waits for a human
      decision.
    - On `REJECTED`, `AdLifecycleService.reject()` sets status `rejected`.
@@ -103,13 +102,13 @@ runs inside a single entrypoint, `BetterAdsApplication`.
 5. **Human review.** A `flagged` ad has no automatic path forward. An admin
    calls `PATCH /api/ads/{id}/review` with `approve` or `reject`; approve
    routes through the same `AdLifecycleService.moveToLive()` used by the
-   automatic path.
+   automatic path. Admins can also reject ads in any pre-live status.
 
 6. **Serving.** `GET /embed/{token}` (public) resolves the token to an ad ID
    and returns a small HTML page with an inline `<video>` and a script that
-   fetches `GET /api/ads/{id}?locale=`. That endpoint resolves the best
-   locale-matched `AdVersion`, runs the fraud check, records the view via
-   `BillingService`, and returns the storage key(s) for playback.
+   fetches `GET /api/ads/{id}/playlist?locale=&vt=`. That endpoint returns
+   all LIVE ads in the campaign with presigned S3 URLs, and the widget cycles
+   through them endlessly. The widget is not muted.
 
 ## Module Responsibilities
 
@@ -126,8 +125,9 @@ runs inside a single entrypoint, `BetterAdsApplication`.
   X-Frame-Options), `ClientIpResolver` (extracts real client IP behind
   proxies).
 
-- **`storage/`** — S3 presigning and object metadata (`StorageService`), all
-  JPA entities and repositories, upload policy constants.
+- **`storage/`** — S3 presigning, object metadata, upload, and deletion
+  (`StorageService`), all JPA entities and repositories, upload policy
+  constants, and `AdCleanupService` (full ad deletion: S3 files + DB cascade).
 
 - **`api/`** — The main REST surface: campaigns, ads, uploads, validation/review,
   analytics.
@@ -192,11 +192,12 @@ registered.
    role-based authorization.
 
 **Route-level access** is enforced two ways: `SecurityConfig` permits a small
-public surface (`/auth/**`, `/embed/**`, `GET /api/ads/{id}`, the Stripe
-webhook), and everything else requires authentication plus a method-level
-`@PreAuthorize` role check. Resource-level ownership (an advertiser can only
-see/edit their own campaigns) is enforced in the controllers themselves via
-`CurrentUserService`, not by Spring Security.
+public surface (`/auth/**`, `/embed/**`, `GET /api/ads/{id}`,
+`GET /api/ads/{id}/playlist`, the Stripe webhook), and everything else
+requires authentication plus a method-level `@PreAuthorize` role check.
+Resource-level ownership (an advertiser can only see/edit their own campaigns)
+is enforced in the controllers themselves via `CurrentUserService`, not by
+Spring Security. Admins can delete any ad via `DELETE /api/ads/{id}`.
 
 ### Filter Chain Order
 
@@ -285,7 +286,8 @@ card-testing abuse.
 view. It looks up the view's `AdVersion` → `Ad` → `Campaign` chain, computes
 a per-view cost from a locale-based rate table, and either records the view
 and increments `campaign.spent`, or — if that would exceed the campaign's
-budget — skips recording and blocks the view.
+budget — marks the campaign `COMPLETED` and deletes all ads in the campaign
+via `AdCleanupService` (S3 files + DB cascade).
 
 ### Locale Rate Table
 
@@ -363,8 +365,8 @@ interface in `ai/`, with implementations selected by the
 | Interface | Mock (default) | Local | HuggingFace |
 |-----------|----------------|-------|-------------|
 | `ModerationService` | Keyword-based (reject/flag/approve by storage key name) | POST /moderate to localhost:9000 | Gradio 3-step: upload → submit → SSE await |
-| `TranslationService` | Returns original key unchanged | POST /translate to localhost:9000 | Gradio EN→FR video dubbing, downloads result to S3 |
-| `SpeechEvaluationService` | Hash-based deterministic 0.6–0.99 score | POST /speech/evaluate to localhost:9000 | (not implemented) |
+| `TranslationService` | Returns original key unchanged | POST /translate to localhost:9000 | Gradio EN→FR video dubbing only, downloads result to S3; failures propagate (revert to AWAITING_FEATURES) |
+| `SpeechEvaluationService` | Hash-based deterministic 0.6–0.99 score | POST /speech/evaluate to localhost:9000 | Fake scoring (no HTTP call, returns random 0.6–0.99) |
 
 This is the seam where a real third-party AI provider would be plugged in
 without touching `ValidationService` or `FeatureProcessingService`.
@@ -432,10 +434,12 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 6. **SELECT FOR UPDATE** — Campaign rows are pessimistically locked during
    budget mutations (both spending via `BillingService.recordView()` and
    crediting via Stripe webhook) to prevent race conditions.
-7. **Budget guard** — If a view would exceed the campaign budget, the view
-   is silently not recorded rather than throwing an error.
-8. **No hard deletes** — Campaigns use soft-delete via `ARCHIVED` status;
-   ads have no delete endpoint at all.
+7. **Budget guard** — If a view would exceed the campaign budget, the campaign
+   is marked COMPLETED and `AdCleanupService` deletes all ads in the campaign
+   (S3 files + DB cascade: views, ad versions, embed links, ad entities).
+8. **Hard deletes** — Ads are fully deleted from S3 and DB via
+   `AdCleanupService`. Admins can delete ads at any time; automatic deletion
+   happens when a campaign's budget is exhausted.
 9. **SSE is single-instance** — The in-process `ConcurrentHashMap` of SSE
    emitters means subscribers are only notified by the instance they
    connected to.

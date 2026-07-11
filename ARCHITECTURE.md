@@ -41,8 +41,9 @@ pipeline handles ad processing via RabbitMQ.
 │  │                     Business Services Layer                        │    │
 │  │                                                                     │    │
 │  │  StorageService    EmbedService     FraudService    BillingService  │    │
-│  │  LinkService       ViewTokenService AdLifecycleService             │    │
-│  │  AuthService       CurrentUserService PaymentRateLimiter           │    │
+│  │  AdCleanupService  LinkService      ViewTokenService                │    │
+│  │  AdLifecycleService AuthService     CurrentUserService              │    │
+│  │                         PaymentRateLimiter                          │    │
 │  └──────────────────────────────┬──────────────────────────────────────┘    │
 │                                 │                                           │
 │  ┌──────────────────────────────┴──────────────────────────────────────┐    │
@@ -212,6 +213,10 @@ RabbitMQ          WorkerConsumer       ValidationService    AI Provider (moderat
 ```
 
 ## Data Flow 3: Ad Serving (Viewer → Widget → API → S3)
+
+The embed widget cycles through all LIVE ads in the campaign endlessly.
+It fetches the playlist endpoint, which returns presigned S3 URLs for every
+LIVE ad, and plays them in sequence.
 
 ```
 Viewer               Publisher Website      BetterAds              S3       Redis
@@ -607,13 +612,14 @@ Two Filter Chains:
 │  └────┬────┘ └──────┬──────┘                                    │
 │       │              │                                           │
 │       ▼              ▼                                           │
-│  ┌──────────┐  ┌──────────┐                                     │
-│  │ Create   │  │ Skip     │                                     │
-│  │ View row │  │ (silent  │                                     │
-│  │ Update   │  │  budget  │                                     │
-│  │ campaign │  │  guard)  │                                     │
-│  │ .spent   │  │          │                                     │
-│  └──────────┘  └──────────┘                                     │
+│  ┌──────────┐  ┌──────────────────┐                              │
+│  │ Create   │  │ Campaign =       │                              │
+│  │ View row │  │ COMPLETED        │                              │
+│  │ Update   │  │ Delete ALL ads   │                              │
+│  │ campaign │  │ (S3 + DB cascade │                              │
+│  │ .spent   │  │ via AdCleanup    │                              │
+│  └──────────┘  │ Service)         │                              │
+│                └──────────────────┘                               │
 │                                                                 │
 │  Locale Rate Table:                                             │
 │  ┌────────┬───────────────┐                                     │
@@ -766,11 +772,13 @@ Two Filter Chains:
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | /api/ads/{id} | **PUBLIC** | Serve ad (fraud + billing) |
+| GET | /api/ads/{id}/playlist | **PUBLIC** | Serve all LIVE ads in campaign |
 | GET | /api/ads/{id}/link | ADVERTISER/ADMIN | Get embed URL/snippet |
 | GET | /api/ads/{id}/validation | ADVERTISER/ADMIN | Poll processing status |
 | GET | /api/ads/{id}/events | ADVERTISER/ADMIN | SSE status stream |
-| POST | /api/ads/{id}/features | ADVERTISER/ADMIN | Select locales, trigger processing |
+| POST | /api/ads/{id}/features | ADVERTISER/ADMIN | Select locales or skip (empty = go LIVE immediately) |
 | PATCH | /api/ads/{id}/review | **ADMIN** | Approve/reject flagged ad |
+| DELETE | /api/ads/{id} | **ADMIN** | Fully delete ad (S3 + DB cascade) |
 
 ### Other Public
 | Method | Path | Auth | Description |

@@ -69,7 +69,7 @@ package "API — Upload & Management" {
 
 package "API — Public Serving" {
     component "Embed Controller\n/embed/{token}" as EMBED_CTRL
-    component "Ad Controller\n/ads/{id}\n(public serve)" as AD_CTRL
+    component "Ad Controller\n/ads/{id}\n/ads/{id}/playlist\nDELETE /ads/{id}" as AD_CTRL
     component "Link Controller\n/links/{adId}" as LINK_CTRL
 }
 
@@ -86,13 +86,14 @@ package "API — Payments" {
 '==========================
 
 package "Business Services" {
-    component "Storage Service\nS3 presign · metadata" as STORAGE_SVC
+    component "Storage Service\nS3 presign · metadata · delete" as STORAGE_SVC
     component "Embed Service\ntoken gen · widget HTML\nview token issuance" as EMBED_SVC
     component "Link Service\nRedis-cached\nlocale lookup" as LINK_SVC
     component "Fraud Service\nIP sliding window\ncampaign velocity" as FRAUD_SVC
     component "View Token Service\nHMAC signed\none-time use" as VT_SVC
     component "Billing Service\nper-view cost\nbudget enforcement" as BILL_SVC
     component "Ad Lifecycle Service\nstatus transitions" as LIFECYCLE_SVC
+    component "Ad Cleanup Service\nS3 + DB cascade\ndelete ads" as CLEANUP_SVC
 }
 
 '==========================
@@ -275,7 +276,11 @@ AD_CTRL     --> FRAUD_SVC     : fraud check
 FRAUD_SVC   --> REDIS         : sliding window + velocity
 AD_CTRL     --> BILL_SVC      : record view
 BILL_SVC    --> DB            : View + UPDATE campaign.spent (FOR UPDATE)
-AD_CTRL     --> S3            : presigned GET URLs
+BILL_SVC    --> CLEANUP_SVC   : budget exhausted → delete all ads
+CLEANUP_SVC --> S3            : delete S3 objects
+CLEANUP_SVC --> DB            : delete views, ad versions, ad links, ads
+AD_CTRL     --> CLEANUP_SVC   : admin DELETE /ads/{id}
+AD_CTRL     --> S3            : presigned GET URLs (playlist)
 
 '==========================================================
 ' CONNECTIONS — Payment Flow
