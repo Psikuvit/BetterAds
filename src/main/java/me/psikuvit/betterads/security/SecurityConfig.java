@@ -84,6 +84,7 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/**").hasRole("ADMIN") // narrowed: only health is public
                         .requestMatchers("/embed/**").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/ads/*").permitAll() // public ad serving
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/ads/*/playlist").permitAll() // public playlist
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/payments/webhook").permitAll() // called by Stripe, verified via signature
                         .anyRequest().authenticated()
                 )
