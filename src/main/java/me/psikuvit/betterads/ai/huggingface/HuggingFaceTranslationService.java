@@ -189,15 +189,21 @@ public class HuggingFaceTranslationService implements TranslationService {
         }
 
         JsonNode result = objectMapper.readTree(event.data());
-        // The response is a VideoData: { "video": FileData, "subtitles": null }
-        // or a flat array [FileData]. Handle both.
-        JsonNode fileData;
+        // SSE complete event data is a JSON array wrapping the outputs.
+        // dub_video returns VideoData: { "video": FileData, "subtitles": null }
+        // So result = [{ "video": { "url": "...", "path": "...", ... }, "subtitles": null }]
+        // Step 1: unwrap the array.  Step 2: extract the "video" FileData from VideoData.
+        JsonNode output;
         if (result.isArray()) {
-            fileData = result.get(0);
-        } else if (result.has("video")) {
-            fileData = result.get("video");
+            output = result.get(0);
         } else {
-            fileData = result;
+            output = result;
+        }
+        JsonNode fileData;
+        if (output != null && output.has("video")) {
+            fileData = output.get("video");
+        } else {
+            fileData = output;
         }
         if (fileData == null || fileData.isNull()) {
             throw new IllegalStateException("Complete event carried no output file for event_id=" + eventId);
