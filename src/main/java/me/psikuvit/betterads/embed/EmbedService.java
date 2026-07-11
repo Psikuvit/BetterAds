@@ -112,7 +112,7 @@ public class EmbedService {
                   function playCurrent() {
                     if (playlist.length === 0) { showError(); return; }
                     var item = playlist[currentIndex];
-                    video.src = item.variants[0];
+                    video.src = item.url;
                     video.play().catch(function(){});
                   }
 

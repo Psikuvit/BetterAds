@@ -142,11 +142,13 @@ public class AdController {
             }
             AdVersion best = variants.getFirst();
             billingService.recordView(best.getId(), ip, deviceInfo);
-            List<String> urls = variants.stream()
-                    .map(v -> storageService.presignGetUrl(extractStorageKey(v.getStorageKey()), Duration.ofHours(2)))
-                    .toList();
+            String url = storageService.presignGetUrl(extractStorageKey(best.getStorageKey()), Duration.ofHours(2));
             String token = viewTokenService.issueToken(ad.getId());
-            return Map.<String, Object>of("adId", ad.getId(), "variants", urls, "vt", token);
+            return Map.<String, Object>of(
+                    "adId", ad.getId(),
+                    "url", url,
+                    "locale", best.getLocale() != null ? best.getLocale() : "",
+                    "vt", token);
         }).filter(item -> item != null).toList();
 
         log.info("Served playlist for campaignId={} ({} ads) to ip={}, requestedLocale={}",
