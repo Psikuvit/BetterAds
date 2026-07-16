@@ -12,6 +12,7 @@ import me.psikuvit.betterads.placements.dto.SessionResponse;
 import me.psikuvit.betterads.placements.exceptions.EventSequenceException;
 import me.psikuvit.betterads.placements.exceptions.InvalidSessionException;
 import me.psikuvit.betterads.storage.AdVariantResolver;
+import me.psikuvit.betterads.storage.CdnSigningService;
 import me.psikuvit.betterads.storage.StorageService;
 import me.psikuvit.betterads.storage.dto.AdSessionStatus;
 import me.psikuvit.betterads.storage.dto.SessionEventType;
@@ -62,6 +63,7 @@ public class SessionService {
     private final SessionEventRepository sessionEventRepository;
     private final AdVariantResolver adVariantResolver;
     private final StorageService storageService;
+    private final CdnSigningService cdnSigningService;
     private final FraudService fraudService;
     private final BillingService billingService;
     private final SessionTokenService sessionTokenService;
@@ -77,6 +79,7 @@ public class SessionService {
                           SessionEventRepository sessionEventRepository,
                           AdVariantResolver adVariantResolver,
                           StorageService storageService,
+                          CdnSigningService cdnSigningService,
                           FraudService fraudService,
                           BillingService billingService,
                           SessionTokenService sessionTokenService,
@@ -91,6 +94,7 @@ public class SessionService {
         this.sessionEventRepository = sessionEventRepository;
         this.adVariantResolver = adVariantResolver;
         this.storageService = storageService;
+        this.cdnSigningService = cdnSigningService;
         this.fraudService = fraudService;
         this.billingService = billingService;
         this.sessionTokenService = sessionTokenService;
@@ -145,8 +149,9 @@ public class SessionService {
         session.setStatus(AdSessionStatus.ACTIVE);
         adSessionRepository.save(session);
 
-        String videoUrl = storageService.presignGetUrl(
-                StorageService.extractStorageKey(best.getStorageKey()), Duration.ofHours(2));
+        String storageKey = StorageService.extractStorageKey(best.getStorageKey());
+        String videoUrl = cdnSigningService.signCdnUrl(storageKey, Duration.ofHours(2))
+                .orElseGet(() -> storageService.presignGetUrl(storageKey, Duration.ofHours(2)));
 
         log.info("Created placement session for site={}, adId={}, adVersionId={}, ip={}",
                 site.getSiteKey(), ad.getId(), best.getId(), ip);

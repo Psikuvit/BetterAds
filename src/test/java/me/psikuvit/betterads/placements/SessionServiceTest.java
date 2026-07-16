@@ -7,6 +7,7 @@ import me.psikuvit.betterads.placements.dto.EventResponse;
 import me.psikuvit.betterads.placements.exceptions.EventSequenceException;
 import me.psikuvit.betterads.placements.exceptions.InvalidSessionException;
 import me.psikuvit.betterads.storage.AdVariantResolver;
+import me.psikuvit.betterads.storage.CdnSigningService;
 import me.psikuvit.betterads.storage.StorageService;
 import me.psikuvit.betterads.storage.dto.AdSessionStatus;
 import me.psikuvit.betterads.storage.dto.SessionEventType;
@@ -55,6 +56,8 @@ class SessionServiceTest {
         sessionEventRepository = mock(SessionEventRepository.class);
         AdVariantResolver adVariantResolver = mock(AdVariantResolver.class);
         StorageService storageService = mock(StorageService.class);
+        CdnSigningService cdnSigningService = mock(CdnSigningService.class);
+        when(cdnSigningService.signCdnUrl(any(), any())).thenReturn(Optional.empty());
         FraudService fraudService = mock(FraudService.class);
         billingService = mock(BillingService.class);
         sessionTokenService = mock(SessionTokenService.class);
@@ -65,8 +68,8 @@ class SessionServiceTest {
         when(valueOperations.setIfAbsent(any(), any(), any(Duration.class))).thenReturn(true);
 
         sessionService = new SessionService(siteRepository, siteService, adRepository, adVersionRepository,
-                adSessionRepository, sessionEventRepository, adVariantResolver, storageService, fraudService,
-                billingService, sessionTokenService, redis, 15L, 2000L);
+                adSessionRepository, sessionEventRepository, adVariantResolver, storageService, cdnSigningService,
+                fraudService, billingService, sessionTokenService, redis, 15L, 2000L);
 
         when(sessionTokenService.isValid(TOKEN)).thenReturn(true);
     }
