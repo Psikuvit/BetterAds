@@ -59,6 +59,8 @@ public class CampaignController {
         Object budgetRaw = body.get("budget");
         campaign.setBudget(budgetRaw != null ? new BigDecimal(budgetRaw.toString()) : BigDecimal.ZERO);
         campaign.setAdvertiserId(user.getId());
+        campaign.setStartsAt(parseOptionalInstant(body.get("startsAt")));
+        campaign.setEndsAt(parseOptionalInstant(body.get("endsAt")));
         campaign = campaignRepository.save(campaign);
         log.info("Campaign created: id={} by {}", campaign.getId(), auth.getName());
         return ResponseEntity.ok(campaign);
@@ -125,6 +127,12 @@ public class CampaignController {
                 }
                 campaign.setBudget(newBudget);
             }
+            if (body.containsKey("startsAt")) {
+                campaign.setStartsAt(parseOptionalInstant(body.get("startsAt")));
+            }
+            if (body.containsKey("endsAt")) {
+                campaign.setEndsAt(parseOptionalInstant(body.get("endsAt")));
+            }
             campaignRepository.save(campaign);
             log.info("Campaign {} updated by {}", id, auth.getName());
             return ResponseEntity.ok(campaign);
@@ -149,6 +157,17 @@ public class CampaignController {
             log.info("Campaign {} status updated to {}", id, newStatus);
             return ResponseEntity.ok(Map.of("campaignId", id, "status", newStatus));
         }).orElse(ResponseEntity.notFound().build());
+    }
+
+    private Instant parseOptionalInstant(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return Instant.parse(raw.toString());
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new IllegalArgumentException("startsAt/endsAt must be ISO-8601 instants, e.g. 2026-01-01T00:00:00Z");
+        }
     }
 
     private CampaignStatus parseStatus(String raw) {

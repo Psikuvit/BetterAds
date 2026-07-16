@@ -27,6 +27,10 @@ public class Campaign {
 
     private Instant createdAt = Instant.now();
 
+    // Optional flight window for pacing (AdSelectionService). Null means unpaced.
+    private Instant startsAt;
+    private Instant endsAt;
+
     // getters/setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -42,4 +46,8 @@ public class Campaign {
     public void setStatus(CampaignStatus status) { this.status = status; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+    public Instant getStartsAt() { return startsAt; }
+    public void setStartsAt(Instant startsAt) { this.startsAt = startsAt; }
+    public Instant getEndsAt() { return endsAt; }
+    public void setEndsAt(Instant endsAt) { this.endsAt = endsAt; }
 }
