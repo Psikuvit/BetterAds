@@ -74,9 +74,15 @@ public class BillingService {
         return rateFor(locale).multiply(new BigDecimal(views));
     }
 
+    /**
+     * Returns whether the view was actually billed (false if the ad version,
+     * ad, or campaign couldn't be resolved, or if the campaign's budget was
+     * exhausted by this view). Callers must not assume the view was counted
+     * just because this method was invoked.
+     */
     @Transactional
-    public void recordView(Long adVersionId, String ip, String deviceInfo) {
-        adVersionRepository.findById(adVersionId).map(adVersion ->
+    public boolean recordView(Long adVersionId, String ip, String deviceInfo) {
+        return adVersionRepository.findById(adVersionId).map(adVersion ->
                 adRepository.findById(adVersion.getAdId()).map(ad ->
                         // Locked for the rest of this transaction: serializes against
                         // concurrent recordView calls and the payment webhook's budget credit.
@@ -106,6 +112,6 @@ public class BillingService {
                                             adVersionId, campaign.getId(), cost, newSpent);
                                     return true;
                                 }
-                        ).orElse(false)).orElse(false));
+                        ).orElse(false)).orElse(false)).orElse(false);
     }
 }

@@ -11,6 +11,7 @@ import me.psikuvit.betterads.fraud.ViewTokenService;
 import me.psikuvit.betterads.links.LinkService;
 import me.psikuvit.betterads.security.ClientIpResolver;
 import me.psikuvit.betterads.storage.AdCleanupService;
+import me.psikuvit.betterads.storage.AdVariantResolver;
 import me.psikuvit.betterads.storage.StorageService;
 import me.psikuvit.betterads.storage.dto.AdStatus;
 import me.psikuvit.betterads.storage.entities.Ad;
@@ -36,8 +37,6 @@ import java.util.Objects;
 @Slf4j
 public class AdController {
 
-    private static final String DEFAULT_LOCALE = "en";
-
     private final LinkService linkService;
     private final FraudService fraudService;
     private final BillingService billingService;
@@ -50,13 +49,15 @@ public class AdController {
     private final AdCleanupService adCleanupService;
     private final CurrentUserService currentUserService;
     private final CampaignRepository campaignRepository;
+    private final AdVariantResolver adVariantResolver;
 
     public AdController(LinkService linkService, FraudService fraudService,
                         BillingService billingService, AdRepository adRepository,
                         AdVersionRepository adVersionRepository, EmbedService embedService,
                         ViewTokenService viewTokenService, ClientIpResolver clientIpResolver,
                         StorageService storageService, AdCleanupService adCleanupService,
-                        CurrentUserService currentUserService, CampaignRepository campaignRepository) {
+                        CurrentUserService currentUserService, CampaignRepository campaignRepository,
+                        AdVariantResolver adVariantResolver) {
         this.linkService = linkService;
         this.fraudService = fraudService;
         this.billingService = billingService;
@@ -69,6 +70,7 @@ public class AdController {
         this.adCleanupService = adCleanupService;
         this.currentUserService = currentUserService;
         this.campaignRepository = campaignRepository;
+        this.adVariantResolver = adVariantResolver;
     }
 
     @GetMapping("/{id}")
@@ -98,7 +100,7 @@ public class AdController {
             return ResponseEntity.notFound().build();
         }
 
-        List<AdVersion> variants = resolveVariants(all, locale);
+        List<AdVersion> variants = adVariantResolver.resolveVariants(all, locale);
 
         // Record view against the best-matched variant
         AdVersion best = variants.getFirst();
@@ -108,7 +110,7 @@ public class AdController {
         // Longer expiry than the upload presign since this is read-only playback content
         // and a mid-view expiry would break the video.
         List<String> urls = variants.stream()
-                .map(v -> storageService.presignGetUrl(extractStorageKey(v.getStorageKey()), Duration.ofHours(2)))
+                .map(v -> storageService.presignGetUrl(StorageService.extractStorageKey(v.getStorageKey()), Duration.ofHours(2)))
                 .toList();
 
         log.info("Served adId={} to ip={}, requestedLocale={}, resolvedLocale={}, variants={}",
@@ -149,13 +151,13 @@ public class AdController {
 
         List<Map<String, Object>> playlist = allAds.stream().map(ad -> {
             List<AdVersion> versions = adVersionRepository.findByAdId(ad.getId());
-            List<AdVersion> variants = resolveVariants(versions, locale);
+            List<AdVersion> variants = adVariantResolver.resolveVariants(versions, locale);
             if (variants.isEmpty()) {
                 return null;
             }
             AdVersion best = variants.getFirst();
             billingService.recordView(best.getId(), ip, deviceInfo);
-            String url = storageService.presignGetUrl(extractStorageKey(best.getStorageKey()), Duration.ofHours(2));
+            String url = storageService.presignGetUrl(StorageService.extractStorageKey(best.getStorageKey()), Duration.ofHours(2));
             String token = viewTokenService.issueToken(ad.getId());
             return Map.<String, Object>of(
                     "adId", ad.getId(),
@@ -206,35 +208,4 @@ public class AdController {
                 .body(new ErrorResponse(message, HttpStatus.TOO_MANY_REQUESTS.value(), request.getRequestURI(), Instant.now()));
     }
 
-    /**
-     * Resolves which AdVersion(s) to serve for a requested locale:
-     * 1. Exact locale match, if the requester specified one and it exists.
-     * 2. The platform default locale, if present — a stable, predictable
-     *    fallback rather than whatever order the DB happens to return.
-     * 3. Whatever exists at all, as a last resort, so a viewer always sees something.
-     */
-    private List<AdVersion> resolveVariants(List<AdVersion> all, String requestedLocale) {
-        if (requestedLocale != null && !requestedLocale.isBlank()) {
-            List<AdVersion> exact = all.stream()
-                    .filter(v -> requestedLocale.equalsIgnoreCase(v.getLocale()))
-                    .toList();
-            if (!exact.isEmpty()) {
-                return exact;
-            }
-        }
-
-        List<AdVersion> defaultLocale = all.stream()
-                .filter(v -> DEFAULT_LOCALE.equalsIgnoreCase(v.getLocale()))
-                .toList();
-        if (!defaultLocale.isEmpty()) {
-            return defaultLocale;
-        }
-
-        return all;
-    }
-
-    private String extractStorageKey(String rawKey) {
-        int idx = rawKey.indexOf("::");
-        return idx == -1 ? rawKey : rawKey.substring(0, idx);
-    }
 }

@@ -38,6 +38,13 @@ public class StorageService {
                 .build();
     }
 
+    // A rawKey can encode extra metadata after a "::" separator; the actual
+    // S3 object key is always just the portion before it.
+    public static String extractStorageKey(String rawKey) {
+        int idx = rawKey.indexOf("::");
+        return idx == -1 ? rawKey : rawKey.substring(0, idx);
+    }
+
     public String presignGetUrl(String key, Duration duration) {
         log.debug("Presigning GET URL for key={}, expiresIn={}", key, duration);
         Date expiration = new Date(System.currentTimeMillis() + duration.toMillis());
