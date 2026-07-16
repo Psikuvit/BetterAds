@@ -86,6 +86,7 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/ads/*").permitAll() // public ad serving
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/ads/*/playlist").permitAll() // public playlist
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/payments/webhook").permitAll() // called by Stripe, verified via signature
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/placements/**").permitAll() // called from arbitrary publisher domains/apps, validated via site key + origin
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)

@@ -18,6 +18,8 @@ public class AdVersion {
 
     private String feature;
 
+    private Long durationSeconds;
+
     private Instant createdAt = Instant.now();
 
     // getters/setters
@@ -31,6 +33,8 @@ public class AdVersion {
     public void setStorageKey(String storageKey) { this.storageKey = storageKey; }
     public String getFeature() { return feature; }
     public void setFeature(String feature) { this.feature = feature; }
+    public Long getDurationSeconds() { return durationSeconds; }
+    public void setDurationSeconds(Long durationSeconds) { this.durationSeconds = durationSeconds; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }

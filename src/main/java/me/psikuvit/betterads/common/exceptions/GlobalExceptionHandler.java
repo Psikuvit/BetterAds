@@ -4,6 +4,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import me.psikuvit.betterads.auth.exceptions.AuthenticationException;
 import me.psikuvit.betterads.auth.exceptions.UserAlreadyExistsException;
+import me.psikuvit.betterads.fraud.exceptions.TooManyRequestsException;
+import me.psikuvit.betterads.placements.exceptions.EventSequenceException;
+import me.psikuvit.betterads.placements.exceptions.InvalidSessionException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -42,6 +45,24 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleNotFound(NoSuchElementException ex, HttpServletRequest request) {
         log.warn("Not found on {} {}: {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
         return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(InvalidSessionException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidSession(InvalidSessionException ex, HttpServletRequest request) {
+        log.warn("Invalid placement session on {} {}: {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
+        return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(EventSequenceException.class)
+    public ResponseEntity<ErrorResponse> handleEventSequence(EventSequenceException ex, HttpServletRequest request) {
+        log.warn("Rejected out-of-sequence event on {} {}: {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
+        return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ResponseEntity<ErrorResponse> handleTooManyRequests(TooManyRequestsException ex, HttpServletRequest request) {
+        log.warn("Rejected likely-fraudulent request on {} {}: {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
+        return build(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), request);
     }
 
     @ExceptionHandler(AccessDeniedException.class)
