@@ -35,15 +35,26 @@ pipeline handles ad processing via RabbitMQ.
 │  │  │/embed/  │ │/payments│ │/links/ │ │/events  │ │/validation│    │    │
 │  │  │{token}  │ │/webhook │ │{adId}  │ │         │ │/review  │     │    │
 │  │  └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘     │    │
-│  └───────┼───────────┼───────────┼───────────┼───────────┼────────────┘    │
-│          │           │           │           │           │                   │
-│  ┌───────┴───────────┴───────────┴───────────┴───────────┴────────────┐    │
+│  │       │                                                            │    │
+│  │  ┌────┴──────────────────────┐  Phase 1 of iframe → SDK migration,│    │
+│  │  │      Placements           │  runs parallel to /embed/** above  │    │
+│  │  │ /api/v1/placements/**     │  (not a replacement yet):          │    │
+│  │  │ POST {siteKey}/session    │  SiteService, SessionService,      │    │
+│  │  │ POST session/{tok}/events │  SessionTokenService               │    │
+│  │  │ /api/sites (registration) │                                    │    │
+│  │  └────┬───────────────────────┘                                   │    │
+│  └───────┼───────────┼───────────┼───────────┼───────────┼──────┬─────┘    │
+│          │           │           │           │           │      │           │
+│  ┌───────┴───────────┴───────────┴───────────┴───────────┴──────┴──────┐    │
 │  │                     Business Services Layer                        │    │
 │  │                                                                     │    │
 │  │  StorageService    EmbedService     FraudService    BillingService  │    │
 │  │  AdCleanupService  LinkService      ViewTokenService                │    │
 │  │  AdLifecycleService AuthService     CurrentUserService              │    │
 │  │                         PaymentRateLimiter                          │    │
+│  │  SiteService        SessionService       SessionTokenService        │    │
+│  │  AdVariantResolver (shared locale-resolution, also used by the      │    │
+│  │                      legacy AdController)                           │    │
 │  └──────────────────────────────┬──────────────────────────────────────┘    │
 │                                 │                                           │
 │  ┌──────────────────────────────┴──────────────────────────────────────┐    │
@@ -87,11 +98,14 @@ pipeline handles ad processing via RabbitMQ.
    │ ads         │       │ link-cache   │       │ PUT / GET   │
    │ ad_versions │       │ rate-limit   │       │             │
    │ views       │       │ fund-limit   │       └─────────────┘
-   │ ad_links    │       └──────────────┘
-   │ payments    │
-   │ stripe_events│
+   │ ad_links    │       │ placement:   │
+   │ payments    │       │  event:*     │
+   │ stripe_events│      └──────────────┘
    │ refresh_tokens│
    │ password_reset│
+   │ sites       │
+   │ ad_sessions │
+   │ session_events│
    └─────────────┘
 ```
 
@@ -531,6 +545,78 @@ Deletion cascades through S3 and DB:
 `AdCleanupService.deleteAd()` removes S3 files, views, ad versions,
 ad links, and the ad entity itself.
 
+## Data Flow 8: Placement Session + Playback Events (SDK migration, Phase 1)
+
+Runs entirely in parallel with Data Flow 3 above — `/embed/{token}` is
+untouched. This is the trust model the future iframe-free SDK will use.
+
+```
+SDK/Client            BetterAds                 FraudService   BillingService   Redis/DB
+    │                     │                          │              │              │
+    │  1. POST /api/v1/   │                          │              │              │
+    │  placements/{siteKey}/session                   │              │              │
+    │  {adId, locale}     │                          │              │              │
+    ├────────────────────>│                          │              │              │
+    │                     │  2. Look up Site by key, │              │              │
+    │                     │     check ACTIVE         │              │              │
+    │                     │  3. Validate Origin/     │              │              │
+    │                     │     Referer or bundleId  │              │              │
+    │                     │     against registration │              │              │
+    │                     │  4. isLikelyFraud(ip)    │              │              │
+    │                     │     — ALWAYS checked,    │              │              │
+    │                     │     no token bypass      │              │              │
+    │                     ├─────────────────────────>│              │              │
+    │                     │<── OK / 429 ─────────────┤              │              │
+    │                     │  5. isCampaignOverVelocity              │              │
+    │                     ├─────────────────────────>│              │              │
+    │                     │<── OK / 429 ─────────────┤              │              │
+    │                     │  6. Resolve best AdVersion              │              │
+    │                     │     for locale (AdVariantResolver)      │              │
+    │                     │  7. Create AdSession row,               │              │
+    │                     │     issue signed sessionToken           │              │
+    │                     ├────────────────────────────────────────────────────────>│
+    │  {sessionToken,     │                          │              │              │
+    │   adId, adVersionId,│                          │              │              │
+    │   videoUrl, locale, │                          │              │              │
+    │   durationSeconds}  │                          │              │              │
+    │<────────────────────┤                          │              │              │
+    │                     │                          │              │              │
+    │  8. Play video,     │                          │              │              │
+    │  wait 2s+ visible   │                          │              │              │
+    │  (IAB viewability)  │                          │              │              │
+    │                     │                          │              │              │
+    │  9. POST .../session/{token}/events            │              │              │
+    │  {eventType:        │                          │              │              │
+    │   "impression_start"}                          │              │              │
+    ├────────────────────>│                          │              │              │
+    │                     │  10. Verify signature+expiry            │              │
+    │                     │  11. Redis dedup + state-machine        │              │
+    │                     │      order check (reject dup/           │              │
+    │                     │      out-of-order → 409)                │              │
+    │                     ├────────────────────────────────────────────────────────>│
+    │                     │  12. Reject if <2000ms since             │              │
+    │                     │      session issuance (viewability      │              │
+    │                     │      floor) → 409                       │              │
+    │                     │  13. recordView(adVersionId, ip, ...)   │              │
+    │                     ├─────────────────────────────────────────────────────>│  │
+    │                     │<── billed: true/false ──────────────────────────────┤  │
+    │  {accepted: true,   │                          │              │              │
+    │   billed: true}     │                          │              │              │
+    │<────────────────────┤                          │              │              │
+    │                     │                          │              │              │
+    │  14. POST quartile_25/50/75, complete events    │              │              │
+    │  (same session, strictly ordered, each          │              │              │
+    │  single-use, persisted to session_events        │              │              │
+    │  for the durable audit trail) ─ ─ ─ ─ ─ ─ ─ ─ ─>│              │              │
+```
+
+Key differences from Data Flow 3's legacy model: the per-IP fraud check runs
+unconditionally (no valid-token bypass), billing fires exactly once per
+session gated on a real elapsed-time viewability floor rather than "an API
+call happened," and every session/event is durably persisted instead of
+relying solely on an ephemeral Redis nonce. See
+`docs/phase1-fraud-comparison.md` for the full write-up.
+
 ## Security Architecture
 
 ```
@@ -575,6 +661,10 @@ Token Strategy:
 │  Password Reset: Same as refresh but 30min expiry, one-time use  │
 │  View Token:    HMAC-SHA256 signed, 2min expiry, one-time use   │
 │                 nonce tracked in Redis                           │
+│  Session Token: HMAC-SHA256 signed (own dedicated secret,       │
+│                 not shared with JWT), configurable TTL           │
+│                 (default 15min), looked up by exact match in    │
+│                 ad_sessions — Placements API only                │
 └─────────────────────────────────────────────────────────────────┘
 
 Two Filter Chains:
@@ -630,6 +720,15 @@ Two Filter Chains:
 │  │  Guards against card-testing abuse                      │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
+
+Placements API (parallel model, Data Flow 8): reuses Layers 1 and 2 above via
+the same FraudService, but always evaluates them — no signed-token bypass.
+Replaces Layer 3's "valid token → skip IP check" with a session+event model:
+billing fires once per session, gated on a real elapsed-time viewability
+floor (2s+ since session issuance) rather than trusting that an API call
+happened, and every session/event persists durably to MySQL
+(session_events, UNIQUE(session_id, event_type)) instead of relying solely
+on an ephemeral Redis nonce. See docs/phase1-fraud-comparison.md.
 ```
 
 ## Billing Architecture
@@ -638,7 +737,10 @@ Two Filter Chains:
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Per-View Billing Flow                         │
 │                                                                 │
-│  GET /api/ads/{id} → BillingService.recordView()                │
+│  GET /api/ads/{id} (legacy)         → BillingService            │
+│  POST .../events {impression_start} → .recordView()             │
+│  (Placements API, once per session — return value is boolean,  │
+│   checked by the caller: budget-exhausted → billed:false)       │
 │       │                                                         │
 │       ▼                                                         │
 │  ┌─────────────────────────┐                                    │
@@ -758,6 +860,22 @@ Two Filter Chains:
        │               │ status       │
        │               │ created_at   │
        │               └──────────────┘
+       │
+       │   ┌──────────────┐       ┌──────────────────┐       ┌──────────────────┐
+       │   │    sites     │       │   ad_sessions     │       │  session_events  │
+       │   ├──────────────┤       ├──────────────────┤       ├──────────────────┤
+       └───│ id (PK)      │◄──┐   │ id (PK)          │◄──┐   │ id (PK)          │
+           │ publisher_id │   │   │ site_id          │   │   │ session_id       │
+           │ name         │   └───│ ad_id            │   └───│ event_type       │
+           │ site_key (UQ)│       │ ad_version_id    │       │ recorded_at      │
+           │ allowed_     │       │ campaign_id      │       │ UNIQUE(session_id│
+           │  origin      │       │ session_token(UQ)│       │  , event_type)   │
+           │ bundle_id    │       │ viewer_ip        │       └──────────────────┘
+           │ status       │       │ device_info      │
+           │ created_at   │       │ issued_at        │
+           └──────────────┘       │ expires_at       │
+                                  │ status           │
+                                  └──────────────────┘
 ```
 
 ## Deployment Architecture
@@ -832,6 +950,13 @@ Two Filter Chains:
 | POST | /api/ads/{id}/features | ADVERTISER/ADMIN | Select locales or skip (empty = go LIVE immediately) |
 | PATCH | /api/ads/{id}/review | **ADMIN** | Approve/reject flagged ad |
 | DELETE | /api/ads/{id} | **ADMIN** | Fully delete ad (S3 + DB cascade) |
+
+### Placements API (Phase 1 of iframe → SDK migration)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | /api/v1/placements/{siteKey}/session | **PUBLIC** | Create a signed session + ad manifest (site key + origin validated) |
+| POST | /api/v1/placements/session/{sessionToken}/events | **PUBLIC** | Record a playback event (ordered, single-use, viewability-gated) |
+| POST | /api/sites | PUBLISHER/ADMIN | Register a site/app, get its non-secret site key |
 
 ### Other Public
 | Method | Path | Auth | Description |

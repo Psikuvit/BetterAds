@@ -53,7 +53,7 @@ runs inside a single entrypoint, `BetterAdsApplication`.
 | **Build Tool** | Apache Maven 3.9.16 (Maven Wrapper) |
 | **ORM** | Spring Data JPA / Hibernate (ddl-auto=none, Flyway-managed schema) |
 | **Database** | MySQL 8.0 (dev: Docker; prod: TiDB Cloud on AWS) |
-| **Migrations** | Flyway (9 migrations: V1 through V9) |
+| **Migrations** | Flyway (10 migrations: V1 through V10) |
 | **Message Queue** | RabbitMQ 3 (management Alpine) |
 | **Cache / Fraud State** | Redis 7 (prod: Upstash with TLS) |
 | **Object Storage** | AWS S3 (SDK v1 `1.12.548`) |
@@ -115,6 +115,17 @@ runs inside a single entrypoint, `BetterAdsApplication`.
    The individual ad detail page (`/ads/[id]`) has been removed — all ad
    management happens at the campaign level.
 
+7. **Serving, SDK path (in progress).** A parallel, iframe-free path is being
+   built to replace the widget above with a framework-agnostic SDK (web,
+   React, React Native — see `placements/`). `POST
+   /api/v1/placements/{siteKey}/session` validates a registered site's origin
+   and returns a signed session token plus a manifest for one ad; `POST
+   /api/v1/placements/session/{sessionToken}/events` accepts an ordered
+   playback-event sequence (`impression_start`, quartiles, `complete`,
+   `error`) and triggers billing once a minimum-viewability threshold is
+   crossed. The legacy `GET /embed/{token}` path above keeps running
+   unchanged in parallel; see "Placements API" below.
+
 ## Module Responsibilities
 
 - **`auth/`** — Login, registration, `/me`, refresh/logout/password-reset.
@@ -173,6 +184,14 @@ runs inside a single entrypoint, `BetterAdsApplication`.
   locale variants, used by the `PUBLISHER`-facing `/api/links/{adId}`
   endpoint.
 
+- **`placements/`** — Phase 1 of the iframe → SDK migration: `SiteService`
+  (site registration, origin/bundle-ID validation), `SessionTokenService`
+  (HMAC-signed session tokens, its own dedicated secret), `SessionService`
+  (session creation with fraud gating, and the playback-event state machine
+  + viewability gate + billing trigger), `PlacementController`/
+  `SiteController`. Runs entirely in parallel with `embed/`/`fraud`'s
+  existing widget path — see "Placements API" below.
+
 - **`config/`** — CORS properties, rate-limit properties/service/filter.
 
 - **`common/exceptions/`** — The single global exception handler and the
@@ -201,7 +220,8 @@ registered.
 
 **Route-level access** is enforced two ways: `SecurityConfig` permits a small
 public surface (`/auth/**`, `/embed/**`, `GET /api/ads/{id}`,
-`GET /api/ads/{id}/playlist`, the Stripe webhook), and everything else
+`GET /api/ads/{id}/playlist`, `POST /api/v1/placements/**`, the Stripe
+webhook), and everything else
 requires authentication plus a method-level `@PreAuthorize` role check.
 Resource-level ownership (an advertiser can only see/edit their own campaigns)
 is enforced in the controllers themselves via `CurrentUserService`, not by
@@ -232,13 +252,16 @@ database level via Flyway-managed schema:
 | **users** | User accounts (id, email, password_hash, role, created_at) |
 | **campaigns** | Ad campaigns (id, advertiser_id, name, budget, spent, status, created_at) |
 | **ads** | Individual ads (id, campaign_id, title, storage_key, status, target_locale, created_at) |
-| **ad_versions** | Locale-specific renditions (id, ad_id, locale, storage_key, feature, created_at) |
+| **ad_versions** | Locale-specific renditions (id, ad_id, locale, storage_key, feature, duration_seconds, created_at) |
 | **views** | Recorded ad impressions (id, ad_version_id, viewed_at, viewer_ip, device_info) |
 | **ad_links** | Embed tokens for live ads (id, ad_id, token, created_at) |
 | **refresh_tokens** | Single-use refresh tokens (id, user_id, token_hash, expires_at, revoked_at, created_at) |
 | **password_reset_tokens** | Password reset tokens (id, user_id, token_hash, expires_at, used_at, created_at) |
 | **payments** | Stripe PaymentIntents (id, campaign_id, advertiser_id, stripe_payment_intent_id, client_idempotency_key, amount, currency, status, created_at) |
 | **stripe_events** | Webhook dedup (id, stripe_event_id, event_type, processed_at) |
+| **sites** | Registered publisher sites/apps (id, publisher_id, name, site_key, allowed_origin, bundle_id, status, created_at) |
+| **ad_sessions** | One row per placement-API ad impression (id, site_id, ad_id, ad_version_id, campaign_id, session_token, viewer_ip, device_info, issued_at, expires_at, status) |
+| **session_events** | Durable playback-event audit trail, `UNIQUE(session_id, event_type)` (id, session_id, event_type, recorded_at) |
 
 ### Entity Relationships
 
@@ -249,6 +272,7 @@ User 1───* RefreshToken
 User 1───* PasswordResetToken
 Campaign 1───* Payment
 User 1───* Payment
+User 1───* Site 1───* AdSession 1───* SessionEvent
 ```
 
 ## Real-Time Status (SSE)
@@ -290,14 +314,31 @@ Three layers work together on the view-recording path (`GET /api/ads/{id}`):
 counter of max 5 funding attempts per hour per advertiser, guarding against
 card-testing abuse.
 
+**Placements API (parallel model).** The `placements/` session+event flow
+reuses layers 1 and 2 above (`FraudService`) but **always** evaluates them —
+there's no signed-token bypass, unlike the legacy view-token path. In place
+of a token that just proves "a widget rendered," billing is gated on a
+`SessionEvent(IMPRESSION_START)` that the server rejects unless at least
+`app.placements.min-viewability-ms` (default 2000ms, the IAB
+viewable-impression floor) has elapsed since session issuance, and every
+session/event is durably persisted (not just an ephemeral Redis nonce). See
+`docs/phase1-fraud-comparison.md` for the full comparison against the legacy
+model — net assessment is equal-or-better on every dimension changed, with
+the same limitations (self-reported quartile/complete timing, no device
+fingerprinting) carried over from the old model rather than newly introduced.
+
 ## Billing and Payments
 
-`BillingService.recordView()` is called on every successfully-served ad
-view. It looks up the view's `AdVersion` → `Ad` → `Campaign` chain, computes
-a per-view cost from a locale-based rate table, and either records the view
-and increments `campaign.spent`, or — if that would exceed the campaign's
-budget — marks the campaign `COMPLETED` and deletes all ads in the campaign
-via `AdCleanupService` (S3 files + DB cascade).
+`BillingService.recordView()` is called both from the legacy `GET
+/api/ads/{id}`/`{id}/playlist` path and from the new placements event flow
+(exactly once per session, on `impression_start`). It looks up the view's
+`AdVersion` → `Ad` → `Campaign` chain, computes a per-view cost from a
+locale-based rate table, and either records the view and increments
+`campaign.spent`, or — if that would exceed the campaign's budget — marks
+the campaign `COMPLETED` and deletes all ads in the campaign via
+`AdCleanupService` (S3 files + DB cascade). It returns a `boolean` indicating
+whether the view was actually billed; the placements flow checks this and
+reports `billed: false` back to the caller instead of assuming success.
 
 ### Locale Rate Table
 
@@ -332,6 +373,52 @@ Double-submit protection at three levels:
 - Stripe's own idempotency key
 - Database unique constraint on `stripe_payment_intent_id`
 
+## Placements API (Phase 1 of iframe → SDK migration)
+
+The dashboard's ad-cycling widget is served via `GET /embed/{token}`, which
+publishers embed as an `<iframe>`. React Native has no iframe/DOM, so a
+proper SDK (web core, React, React Native wrappers) is being built to
+replace it — but removing the iframe removes the implicit trust anchor the
+current model relies on (a server-rendered page carrying a signed,
+short-lived token), so that trust boundary has to be rebuilt explicitly
+first. That's what `placements/` is: a session + playback-event API,
+**running entirely in parallel** with the existing `/embed/{token}` path,
+which is untouched and keeps serving traffic unchanged.
+
+- `POST /api/v1/placements/{siteKey}/session` — validates the `Site`
+  (registered via `POST /api/sites`, `PUBLISHER`/`ADMIN` only) exists, is
+  `ACTIVE`, and that the calling `Origin`/`Referer` header (web) or claimed
+  bundle ID (mobile) matches what's registered, then runs the same
+  `FraudService` IP/campaign-velocity checks the legacy path uses — always,
+  with no bypass. Resolves the requested ad's best locale variant
+  (`AdVariantResolver`, shared with the legacy `AdController`), creates an
+  `AdSession` row, and returns a signed `sessionToken` (`SessionTokenService`,
+  its own HMAC secret) plus a manifest (`adId`, `adVersionId`, a presigned
+  `videoUrl`, `locale`, `durationSeconds`).
+- `POST /api/v1/placements/session/{sessionToken}/events` — accepts one
+  event per call (`impression_start`, `quartile_25/50/75`, `complete`,
+  `error`), enforced through a strict state machine: each event type is
+  single-use per session (Redis fast-path + a DB `UNIQUE(session_id,
+  event_type)` backstop) and must arrive in order. `impression_start` is
+  rejected unless at least `app.placements.min-viewability-ms` has elapsed
+  since session issuance (the IAB 2-second viewable-impression floor) — and
+  only a successful `impression_start` triggers `BillingService.recordView()`,
+  exactly once per session. A budget-exhausted view is reported back as
+  `billed: false` instead of silently succeeding.
+- Both endpoints are public (`SecurityConfig`), since the SDK will run on
+  arbitrary publisher domains — trust comes from the site-key/origin
+  validation and fraud checks above, not from authentication.
+- Site/session/event modeling is entirely new (`Site`, `AdSession`,
+  `SessionEvent` entities — see Data Model above) and independent of
+  `AdLink`/`ViewTokenService`, which the legacy embed path keeps using
+  unchanged.
+
+See `docs/phase1-fraud-comparison.md` for a full comparison against the
+legacy `ViewTokenService` model. Later phases (not yet built) add dynamic
+site-key-based CORS, signed CDN delivery, the actual web/React/React Native
+SDK packages, and server-driven ad selection (frequency capping, pacing) to
+replace the current client-side round-robin.
+
 ## Error Handling
 
 A single `GlobalExceptionHandler` (`common/exceptions/`) maps every
@@ -348,10 +435,11 @@ exception type used across the codebase to a consistent JSON body:
 
 Handled exception types: `AuthenticationException` (401),
 `UserAlreadyExistsException` (409), `NoSuchElementException` (404),
-`AccessDeniedException` (403), `MethodArgumentNotValidException` (400),
-`HttpMessageNotReadableException` (400), `IllegalArgumentException` (400),
-`AsyncRequestNotUsableException` (silent disconnect), generic `Exception`
-(500).
+`InvalidSessionException` (404), `EventSequenceException` (409),
+`TooManyRequestsException` (429), `AccessDeniedException` (403),
+`MethodArgumentNotValidException` (400), `HttpMessageNotReadableException`
+(400), `IllegalArgumentException` (400), `AsyncRequestNotUsableException`
+(silent disconnect), generic `Exception` (500).
 
 The rate-limit filter runs as a raw Servlet `Filter` ahead of Spring's own
 exception-handling machinery and so cannot use `@ExceptionHandler`; it
@@ -393,7 +481,7 @@ All configuration is externalized via:
 Key configuration groups: `spring.datasource.*`, `spring.rabbitmq.*`,
 `spring.data.redis.*`, `app.s3.*`, `app.auth.*`, `app.stripe.*`,
 `app.fraud.*`, `app.ai.*`, `app.ratelimit.*`, `app.cors.*`,
-`app.upload.*`, `app.base-url`.
+`app.upload.*`, `app.base-url`, `app.placements.*`.
 
 ## Build and Deployment
 
