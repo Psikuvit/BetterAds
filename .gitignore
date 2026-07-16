@@ -37,6 +37,7 @@ backend_gaps.txt
 frontend_prompt.txt
 work_pipeline.puml
 betterads.log
+logs/
 .gitignore
 
 # Real secrets go here, never in application.properties. Only .env.example

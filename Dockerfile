@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- Build stage ----
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM maven:3.9-eclipse-temurin-22 AS build
 WORKDIR /app
 
 # Cache dependencies separately from source so a source-only change doesn't
@@ -13,7 +13,7 @@ COPY src ./src
 RUN mvn -q -B clean package -DskipTests
 
 # ---- Runtime stage ----
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:22-jre
 WORKDIR /app
 
 # curl is used by the HEALTHCHECK below; eclipse-temurin's JRE image doesn't
@@ -30,7 +30,7 @@ USER appuser
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
-    CMD curl -fs http://localhost:8080/actuator/health | grep -q '"status":"UP"' || exit 1
+    CMD curl -fs http://localhost:8080/actuator/health/ping | grep -q '"status":"UP"' || exit 1
 
 # Runs BetterAdsApplication: the web API and the ad-processing RabbitMQ
 # consumer both live in this single component-scanned context.
