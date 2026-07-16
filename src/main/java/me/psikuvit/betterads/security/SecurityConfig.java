@@ -1,7 +1,6 @@
 package me.psikuvit.betterads.security;
 
 import jakarta.servlet.DispatcherType;
-import me.psikuvit.betterads.config.CorsProperties;
 import me.psikuvit.betterads.config.RateLimitFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,9 +15,6 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.CorsConfigurationSource;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 @EnableWebSecurity
@@ -27,34 +23,19 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final RateLimitFilter rateLimitFilter;
     private final SecurityHeadersFilter securityHeadersFilter;
-    private final CorsProperties corsProperties;
+    private final DynamicCorsConfigurationSource corsConfigurationSource;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, RateLimitFilter rateLimitFilter,
-                          SecurityHeadersFilter securityHeadersFilter, CorsProperties corsProperties) {
+                          SecurityHeadersFilter securityHeadersFilter, DynamicCorsConfigurationSource corsConfigurationSource) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.rateLimitFilter = rateLimitFilter;
         this.securityHeadersFilter = securityHeadersFilter;
-        this.corsProperties = corsProperties;
+        this.corsConfigurationSource = corsConfigurationSource;
     }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
-    }
-
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(corsProperties.getAllowedOrigins());
-        config.setAllowedMethods(corsProperties.getAllowedMethods());
-        config.setAllowedHeaders(corsProperties.getAllowedHeaders());
-        config.setExposedHeaders(corsProperties.getExposedHeaders());
-        config.setAllowCredentials(corsProperties.isAllowCredentials());
-        config.setMaxAge(corsProperties.getMaxAge());
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-        return source;
     }
 
     @Bean
@@ -74,7 +55,7 @@ public class SecurityConfig {
     @Bean
     @Order(2)
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http.cors(cors -> cors.configurationSource(corsConfigurationSource()))
+        http.cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authz -> authz
