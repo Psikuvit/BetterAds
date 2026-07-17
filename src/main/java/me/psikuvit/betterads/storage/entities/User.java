@@ -20,7 +20,7 @@ public class User {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private Role role; // ADVERTISER, PUBLISHER, ADMIN
+    private Role role; // ADVERTISER, ADMIN
 
     private Instant createdAt = Instant.now();
 

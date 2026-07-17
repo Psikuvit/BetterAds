@@ -18,7 +18,7 @@ public class LinkController {
     }
 
     @GetMapping("/{adId}")
-    @PreAuthorize("hasAnyRole('PUBLISHER', 'ADVERTISER')")
+    @PreAuthorize("hasRole('ADVERTISER')")
     public List<String> resolve(@PathVariable Long adId,
                                 @RequestParam(required = false) String locale) {
         log.info("Resolving variants for adId={}, locale={}", adId, locale);

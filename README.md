@@ -181,7 +181,7 @@ runs inside a single entrypoint, `BetterAdsApplication`.
   successful payment, deduplicating webhook events).
 
 - **`links/`** — `LinkService`, a Redis-cached read path for resolving an ad's
-  locale variants, used by the `PUBLISHER`-facing `/api/links/{adId}`
+  locale variants, used by the `ADVERTISER`-facing `/api/links/{adId}`
   endpoint.
 
 - **`placements/`** — Phase 1 of the iframe → SDK migration: `SiteService`
@@ -209,7 +209,10 @@ plaintext — and password-reset requests always return the same response
 whether or not the email exists, to avoid leaking which emails are
 registered.
 
-**Three roles exist:** `ADVERTISER`, `PUBLISHER`, `ADMIN`.
+**Two roles exist:** `ADVERTISER`, `ADMIN`. (A separate `PUBLISHER` role
+used to gate site registration; it was merged into `ADVERTISER` so one
+role covers both buying ad campaigns and registering a site to display
+ads.)
 
 **Two security filter chains:**
 
@@ -386,7 +389,7 @@ first. That's what `placements/` is: a session + playback-event API,
 which is untouched and keeps serving traffic unchanged.
 
 - `POST /api/v1/placements/{siteKey}/session` — validates the `Site`
-  (registered via `POST /api/sites`, `PUBLISHER`/`ADMIN` only) exists, is
+  (registered via `POST /api/sites`, `ADVERTISER`/`ADMIN` only) exists, is
   `ACTIVE`, and that the calling `Origin`/`Referer` header (web) or claimed
   bundle ID (mobile) matches what's registered, then runs the same
   `FraudService` IP/campaign-velocity checks the legacy path uses — always,

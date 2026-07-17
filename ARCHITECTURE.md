@@ -956,13 +956,13 @@ on an ephemeral Redis nonce. See docs/phase1-fraud-comparison.md.
 |--------|------|------|-------------|
 | POST | /api/v1/placements/{siteKey}/session | **PUBLIC** | Create a signed session + ad manifest (site key + origin validated) |
 | POST | /api/v1/placements/session/{sessionToken}/events | **PUBLIC** | Record a playback event (ordered, single-use, viewability-gated) |
-| POST | /api/sites | PUBLISHER/ADMIN | Register a site/app, get its non-secret site key |
+| POST | /api/sites | ADVERTISER/ADMIN | Register a site/app, get its non-secret site key |
 
 ### Other Public
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | /embed/{token} | **PUBLIC** | Serve embed widget HTML |
-| GET | /api/links/{adId} | PUBLISHER/ADVERTISER | Redis-cached variant lookup |
+| GET | /api/links/{adId} | ADVERTISER | Redis-cached variant lookup |
 | GET | /api/analytics/advertiser | ADVERTISER | Cross-campaign dashboard |
 | POST | /api/payments/webhook | **PUBLIC** (Stripe sig) | Stripe webhook |
 | GET | /actuator/health | **PUBLIC** | Health check |

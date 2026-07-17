@@ -45,7 +45,7 @@ public class SiteController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('PUBLISHER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
     public ResponseEntity<SiteResponse> register(@Valid @RequestBody SiteRegistrationRequest request, Authentication auth) {
         User user = currentUserService.resolve(auth);
         Site site = siteService.register(user.getId(), request.name(), request.allowedOrigin(), request.bundleId());
@@ -54,7 +54,7 @@ public class SiteController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('PUBLISHER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
     public Page<SiteResponse> list(Authentication auth, Pageable pageable) {
         User user = currentUserService.resolve(auth);
         Page<Site> sites = currentUserService.isAdmin(auth)
@@ -64,7 +64,7 @@ public class SiteController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('PUBLISHER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
     public ResponseEntity<?> get(@PathVariable Long id, Authentication auth) {
         return siteRepository.findById(id).map(site -> {
             if (!canAccess(site, auth)) {
