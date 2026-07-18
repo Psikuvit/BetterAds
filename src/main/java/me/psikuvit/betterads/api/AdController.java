@@ -171,6 +171,43 @@ public class AdController {
         return ResponseEntity.ok(Map.of("ads", playlist));
     }
 
+    @GetMapping("/{id}/preview")
+    @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
+    public ResponseEntity<?> preview(@PathVariable Long id,
+                                     @RequestParam(required = false) String locale,
+                                     Authentication auth) {
+        Ad ad = adRepository.findById(id).orElse(null);
+        if (ad == null) {
+            return ResponseEntity.notFound().build();
+        }
+        if (!currentUserService.isAdmin(auth)) {
+            boolean owns = campaignRepository.findById(ad.getCampaignId())
+                    .map(Campaign::getAdvertiserId)
+                    .map(uid -> uid.equals(currentUserService.resolve(auth).getId()))
+                    .orElse(false);
+            if (!owns) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("error", "You do not have access to this ad"));
+            }
+        }
+
+        List<AdVersion> all = adVersionRepository.findByAdId(id);
+        if (all.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        AdVersion best = adVariantResolver.resolveVariants(all, locale).getFirst();
+
+        // Unlike serveAd/servePlaylist above, this is an authenticated advertiser
+        // previewing their own ad in the dashboard -- it must not go through
+        // billingService.recordView/fraudService/ViewTokenService, or every
+        // preview would be counted and billed as a real served impression.
+        String url = storageService.presignGetUrl(StorageService.extractStorageKey(best.getStorageKey()), Duration.ofHours(2));
+        return ResponseEntity.ok(Map.of(
+                "adId", id,
+                "videoUrl", url,
+                "locale", best.getLocale() != null ? best.getLocale() : ""));
+    }
+
     @GetMapping("/{id}/link")
     @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
     public ResponseEntity<?> getLink(@PathVariable Long id) {
