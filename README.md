@@ -112,8 +112,19 @@ runs inside a single entrypoint, `BetterAdsApplication`.
    and the widget cycles through them endlessly. The widget reports video
    dimensions to the parent iframe via `postMessage` for dynamic sizing.
    The embed is served at campaign level (`GET /api/campaigns/{id}/embed`).
-   The individual ad detail page (`/ads/[id]`) has been removed — all ad
-   management happens at the campaign level.
+
+6a. **Dashboard preview (not the public path).** The individual ad detail
+   page (`/ads/[id]`) and the campaign page both still exist in the
+   dashboard, but neither previews via the public/tracked path above.
+   `GET /api/ads/{id}/preview` (single ad) and `GET /api/campaigns/{id}/preview`
+   (every LIVE ad in the campaign, i.e. the playlist) are authenticated,
+   ownership-checked endpoints that resolve a presigned video URL through
+   `AdPreviewService` without ever calling `BillingService`, `FraudService`,
+   or `ViewTokenService` — so an advertiser watching their own ad or campaign
+   in the dashboard is never counted as a served impression, and doesn't
+   need a registered site. The real, tracked, site-key-based experience a
+   publisher gets is `GET /embed/{token}` on their own site, not anything in
+   this dashboard.
 
 7. **Serving, SDK path (in progress).** A parallel, iframe-free path is being
    built to replace the widget above with a framework-agnostic SDK (web,
@@ -147,6 +158,11 @@ runs inside a single entrypoint, `BetterAdsApplication`.
 
 - **`api/`** — The main REST surface: campaigns, ads, uploads, validation/review,
   analytics.
+
+- **`storage/AdPreviewService`** — Resolves a presigned playback URL for one
+  ad with no side effects. Shared by `AdController`'s `GET /{id}/preview`
+  and `CampaignController`'s `GET /{id}/preview`, both dashboard-only,
+  untracked, and site-key-free — see step 6a above.
 
 - **`queue/`** — RabbitMQ queue definition (`RabbitConfig`) and the producer
   side (`ProcessingQueueService`).
@@ -549,6 +565,8 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
     202 immediately and processes translation in a background thread via
     `CompletableFuture.runAsync()`. This avoids Render's 30-second proxy
     timeout during HuggingFace translation (~18s+).
-11. **Campaign-level embed** — The embed is served from the campaign
-    dashboard, not individual ad pages. The individual ad detail page
-    has been removed — all ad management happens at campaign level.
+11. **Campaign-level embed, dashboard-level preview** — The real,
+    tracked embed (`GET /api/campaigns/{id}/embed`) is served from the
+    campaign, not individual ad pages. The individual ad detail page
+    (`/ads/[id]`) still exists, but only for untracked preview/lifecycle
+    management (`GET /api/ads/{id}/preview`) — see step 6a above.

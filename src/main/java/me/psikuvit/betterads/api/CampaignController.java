@@ -3,6 +3,7 @@ package me.psikuvit.betterads.api;
 import lombok.extern.slf4j.Slf4j;
 import me.psikuvit.betterads.auth.CurrentUserService;
 import me.psikuvit.betterads.embed.EmbedService;
+import me.psikuvit.betterads.storage.AdPreviewService;
 import me.psikuvit.betterads.storage.dto.AdStatus;
 import me.psikuvit.betterads.storage.dto.CampaignStatus;
 import me.psikuvit.betterads.storage.entities.Ad;
@@ -24,7 +25,9 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/campaigns")
@@ -36,17 +39,20 @@ public class CampaignController {
     private final ViewRepository viewRepository;
     private final CurrentUserService currentUserService;
     private final EmbedService embedService;
+    private final AdPreviewService adPreviewService;
 
     public CampaignController(CampaignRepository campaignRepository,
                                AdRepository adRepository,
                                ViewRepository viewRepository,
                                CurrentUserService currentUserService,
-                               EmbedService embedService) {
+                               EmbedService embedService,
+                               AdPreviewService adPreviewService) {
         this.campaignRepository = campaignRepository;
         this.adRepository = adRepository;
         this.viewRepository = viewRepository;
         this.currentUserService = currentUserService;
         this.embedService = embedService;
+        this.adPreviewService = adPreviewService;
     }
 
     @PostMapping
@@ -256,6 +262,30 @@ public class CampaignController {
                     "embedUrl", embedService.embedUrl(link.getToken()),
                     "embedSnippet", embedService.embedSnippet(link.getToken()),
                     "token", link.getToken()));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/{id}/preview")
+    @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
+    public ResponseEntity<?> preview(@PathVariable Long id,
+                                     @RequestParam(required = false) String locale,
+                                     Authentication auth) {
+        return campaignRepository.findById(id).map(campaign -> {
+            if (!canAccess(campaign, auth)) {
+                return forbidden(id, auth);
+            }
+            // Dashboard-only playlist preview: unlike the public /embed/{token}
+            // widget and GET /api/ads/{id}/playlist (which bill and fraud-check
+            // every LIVE ad in the campaign), this never touches
+            // BillingService/FraudService/ViewTokenService and needs no site key
+            // — it's just the advertiser checking what their own campaign looks
+            // like, one video per LIVE ad, all at once.
+            List<Map<String, Object>> ads = adRepository.findByCampaignIdAndStatus(id, AdStatus.LIVE).stream()
+                    .map(ad -> adPreviewService.resolve(ad.getId(), locale))
+                    .flatMap(Optional::stream)
+                    .map(p -> Map.<String, Object>of("adId", p.adId(), "videoUrl", p.videoUrl(), "locale", p.locale()))
+                    .toList();
+            return ResponseEntity.ok(ads);
         }).orElse(ResponseEntity.notFound().build());
     }
 

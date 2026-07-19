@@ -332,8 +332,24 @@ Viewer               Publisher Website      BetterAds              S3       Redi
 The embed is served from the campaign dashboard (`GET /api/campaigns/{id}/embed`),
 not from individual ad pages. The endpoint returns the embed URL/snippet for the
 campaign's first LIVE ad, or `{available: false}` if no live ads exist. The
-individual ad detail page (`/ads/[id]`) has been removed — all ad management
-(stats, feature selection, embed) happens at the campaign level.
+individual ad detail page (`/ads/[id]`) still exists for per-ad status/
+lifecycle actions and its own untracked preview (see "Ad/Campaign Preview"
+below) — it just isn't where the real embed code comes from.
+
+### Ad/Campaign Preview (dashboard-only, untracked)
+
+Distinct from Data Flow 3 above (which is the real, public, tracked path a
+*publisher's* page hits): `GET /api/ads/{id}/preview` (single ad, `/ads/[id]`)
+and `GET /api/campaigns/{id}/preview` (every LIVE ad in the campaign, i.e. a
+playlist, `/campaigns/[id]`) let an *advertiser* watch their own ad(s) inside
+the dashboard. Both are `ADVERTISER`/`ADMIN`-authenticated, ownership-checked,
+and resolve a presigned video URL via the shared `AdPreviewService` —
+crucially, neither calls `BillingService.recordView`, `FraudService`, or
+`ViewTokenService`, and neither needs a `Site`/site key at all. Opening your
+own ad or campaign in the dashboard is therefore never counted as a served
+impression. The campaign variant is a thin wrapper: for each of the
+campaign's LIVE ads, it calls the same `AdPreviewService.resolve()` the
+single-ad endpoint uses and returns the list.
 
 ## Data Flow 4: Authentication
 
@@ -938,6 +954,7 @@ on an ephemeral Redis nonce. See docs/phase1-fraud-comparison.md.
 | GET | /api/campaigns/{id}/analytics/timeseries | ADVERTISER/ADMIN | Daily view counts |
 | GET | /api/campaigns/{id}/ads/analytics | ADVERTISER/ADMIN | Per-ad breakdown |
 | POST | /api/campaigns/{id}/fund | ADVERTISER | Stripe campaign funding |
+| GET | /api/campaigns/{id}/preview | ADVERTISER/ADMIN | Untracked playlist preview of every LIVE ad, no site key |
 
 ### Ad Serving & Management
 | Method | Path | Auth | Description |
@@ -945,6 +962,7 @@ on an ephemeral Redis nonce. See docs/phase1-fraud-comparison.md.
 | GET | /api/ads/{id} | **PUBLIC** | Serve ad (fraud + billing) |
 | GET | /api/ads/{id}/playlist | **PUBLIC** | Serve all LIVE ads in campaign |
 | GET | /api/ads/{id}/link | ADVERTISER/ADMIN | Get embed URL/snippet |
+| GET | /api/ads/{id}/preview | ADVERTISER/ADMIN | Untracked single-ad preview, no site key |
 | GET | /api/ads/{id}/validation | ADVERTISER/ADMIN | Poll processing status |
 | GET | /api/ads/{id}/events | ADVERTISER/ADMIN | SSE status stream |
 | POST | /api/ads/{id}/features | ADVERTISER/ADMIN | Select locales or skip (empty = go LIVE immediately) |

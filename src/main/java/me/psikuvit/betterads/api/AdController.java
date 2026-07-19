@@ -11,6 +11,7 @@ import me.psikuvit.betterads.fraud.ViewTokenService;
 import me.psikuvit.betterads.links.LinkService;
 import me.psikuvit.betterads.security.ClientIpResolver;
 import me.psikuvit.betterads.storage.AdCleanupService;
+import me.psikuvit.betterads.storage.AdPreviewService;
 import me.psikuvit.betterads.storage.AdVariantResolver;
 import me.psikuvit.betterads.storage.StorageService;
 import me.psikuvit.betterads.storage.dto.AdStatus;
@@ -50,6 +51,7 @@ public class AdController {
     private final CurrentUserService currentUserService;
     private final CampaignRepository campaignRepository;
     private final AdVariantResolver adVariantResolver;
+    private final AdPreviewService adPreviewService;
 
     public AdController(LinkService linkService, FraudService fraudService,
                         BillingService billingService, AdRepository adRepository,
@@ -57,7 +59,7 @@ public class AdController {
                         ViewTokenService viewTokenService, ClientIpResolver clientIpResolver,
                         StorageService storageService, AdCleanupService adCleanupService,
                         CurrentUserService currentUserService, CampaignRepository campaignRepository,
-                        AdVariantResolver adVariantResolver) {
+                        AdVariantResolver adVariantResolver, AdPreviewService adPreviewService) {
         this.linkService = linkService;
         this.fraudService = fraudService;
         this.billingService = billingService;
@@ -71,6 +73,7 @@ public class AdController {
         this.currentUserService = currentUserService;
         this.campaignRepository = campaignRepository;
         this.adVariantResolver = adVariantResolver;
+        this.adPreviewService = adPreviewService;
     }
 
     @GetMapping("/{id}")
@@ -191,21 +194,16 @@ public class AdController {
             }
         }
 
-        List<AdVersion> all = adVersionRepository.findByAdId(id);
-        if (all.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-        AdVersion best = adVariantResolver.resolveVariants(all, locale).getFirst();
-
         // Unlike serveAd/servePlaylist above, this is an authenticated advertiser
-        // previewing their own ad in the dashboard -- it must not go through
-        // billingService.recordView/fraudService/ViewTokenService, or every
+        // previewing their own ad in the dashboard -- AdPreviewService must not go
+        // through billingService.recordView/fraudService/ViewTokenService, or every
         // preview would be counted and billed as a real served impression.
-        String url = storageService.presignGetUrl(StorageService.extractStorageKey(best.getStorageKey()), Duration.ofHours(2));
-        return ResponseEntity.ok(Map.of(
-                "adId", id,
-                "videoUrl", url,
-                "locale", best.getLocale() != null ? best.getLocale() : ""));
+        return adPreviewService.resolve(id, locale)
+                .<ResponseEntity<?>>map(p -> ResponseEntity.ok(Map.of(
+                        "adId", p.adId(),
+                        "videoUrl", p.videoUrl(),
+                        "locale", p.locale())))
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @GetMapping("/{id}/link")
