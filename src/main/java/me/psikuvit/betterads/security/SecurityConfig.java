@@ -38,6 +38,12 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * Filter chain for the deprecated legacy {@code /embed/{token}} widget
+     * (see {@code me.psikuvit.betterads.embed}). Unchanged and still serving
+     * traffic for existing embedded iframes; new integrations should use
+     * {@code placements/} instead.
+     */
     @Bean
     @Order(1)
     public SecurityFilterChain embedFilterChain(HttpSecurity http) throws Exception {

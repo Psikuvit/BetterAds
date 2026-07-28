@@ -76,6 +76,12 @@ public class AdController {
         this.adPreviewService = adPreviewService;
     }
 
+    /**
+     * @deprecated Serves the legacy {@code /embed/{token}} widget's single-ad
+     * fetch. New publisher integrations use the {@code placements/} session+event
+     * API instead (see {@code docs/phase1-fraud-comparison.md}).
+     */
+    @Deprecated
     @GetMapping("/{id}")
     public ResponseEntity<?> serveAd(@PathVariable Long id,
                                      @RequestParam(required = false) String locale,
@@ -121,6 +127,12 @@ public class AdController {
         return ResponseEntity.ok(Map.of("adId", id, "variants", urls));
     }
 
+    /**
+     * @deprecated Serves the legacy {@code /embed/{token}} widget's playlist
+     * fetch (bills every LIVE ad in the campaign on every call). New publisher
+     * integrations use the {@code placements/} session+event API instead.
+     */
+    @Deprecated
     @GetMapping("/{id}/playlist")
     public ResponseEntity<?> servePlaylist(@PathVariable Long id,
                                            @RequestParam(required = false) String locale,
@@ -206,6 +218,12 @@ public class AdController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
+    /**
+     * @deprecated Returns a legacy {@code /embed/{token}} iframe snippet. Kept
+     * for advertisers still using the old embed flow; new dashboard/publisher
+     * integrations should be built on {@code placements/} instead.
+     */
+    @Deprecated
     @GetMapping("/{id}/link")
     @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
     public ResponseEntity<?> getLink(@PathVariable Long id) {

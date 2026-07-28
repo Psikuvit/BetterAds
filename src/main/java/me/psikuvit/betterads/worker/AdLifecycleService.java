@@ -56,6 +56,9 @@ public class AdLifecycleService {
         eventPublisher.publish(ad.getId(), ad.getStatus());
         log.info("Ad ID: {} status updated to live", ad.getId());
 
+        // EmbedService/AdLink are deprecated (legacy /embed/{token} path) but link
+        // generation stays here so GET /api/ads/{id}/link and GET
+        // /api/campaigns/{id}/embed keep working for advertisers still using it.
         var link = embedService.generateLink(ad.getId());
         log.info("Ad ID: {} is live — embed token={}", ad.getId(), link.getToken());
     }

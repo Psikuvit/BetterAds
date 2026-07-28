@@ -18,7 +18,14 @@ import java.util.UUID;
  * rendered. A view-recording call presenting a valid token proves it came
  * from a genuine widget load and can't be replayed, so it skips the
  * IP-rate-limit fallback check in FraudService.
+ *
+ * @deprecated Part of the legacy {@code /embed/{token}} trust model. The
+ * {@code placements/} {@code SessionTokenService} is the replacement — it
+ * always runs fraud checks rather than allowing a valid token to bypass them
+ * (see {@code docs/phase1-fraud-comparison.md}). Kept unchanged for the
+ * still-running legacy path.
  */
+@Deprecated
 @Service
 public class ViewTokenService {
 

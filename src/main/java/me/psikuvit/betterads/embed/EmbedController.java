@@ -5,6 +5,14 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * @deprecated Legacy public iframe widget. Frontend integrations should use
+ * the {@code placements/} session+event SDK API instead (see
+ * {@code docs/phase1-fraud-comparison.md}). Kept running, unchanged, for
+ * existing embedded iframes still pointing at old {@code /embed/{token}}
+ * links — do not build new features against this path.
+ */
+@Deprecated
 @RestController
 @RequestMapping("/embed")
 @Slf4j

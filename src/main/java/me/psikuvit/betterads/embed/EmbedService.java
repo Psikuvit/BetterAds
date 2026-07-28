@@ -10,6 +10,14 @@ import org.springframework.stereotype.Service;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * @deprecated Legacy embed-link generation and widget rendering, backing the
+ * old {@code /embed/{token}} iframe path. Superseded by the {@code placements/}
+ * session+event SDK. Left in place, unchanged, so previously issued
+ * {@link me.psikuvit.betterads.storage.entities.AdLink} tokens keep working —
+ * new integrations should not depend on this.
+ */
+@Deprecated
 @Service
 @Slf4j
 public class EmbedService {

@@ -3,6 +3,12 @@ package me.psikuvit.betterads.storage.entities;
 import jakarta.persistence.*;
 import java.time.Instant;
 
+/**
+ * @deprecated Backs the legacy {@code /embed/{token}} iframe path only.
+ * New integrations go through {@code placements/} ({@code Site}/{@code AdSession}),
+ * which has no equivalent permanent-token concept.
+ */
+@Deprecated
 @Entity
 @Table(name = "ad_links")
 public class AdLink {

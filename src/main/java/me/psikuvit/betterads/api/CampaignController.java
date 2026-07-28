@@ -244,6 +244,12 @@ public class CampaignController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
+    /**
+     * @deprecated Returns a legacy {@code /embed/{token}} iframe snippet for the
+     * campaign's first LIVE ad. New publisher integrations should be built on
+     * {@code placements/} instead.
+     */
+    @Deprecated
     @GetMapping("/{id}/embed")
     @PreAuthorize("hasAnyRole('ADVERTISER', 'ADMIN')")
     public ResponseEntity<?> embed(@PathVariable Long id, Authentication auth) {
