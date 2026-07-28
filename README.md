@@ -105,7 +105,9 @@ runs inside a single entrypoint, `BetterAdsApplication`.
    routes through the same `AdLifecycleService.moveToLive()` used by the
    automatic path. Admins can also reject ads in any pre-live status.
 
-6. **Serving.** `GET /embed/{token}` (public) resolves the token to an ad ID
+6. **Serving (deprecated).** The frontend now integrates via the `placements/`
+   SDK (section 7) instead of this iframe widget; this path is kept running,
+   unchanged, only for previously issued embed links. `GET /embed/{token}` (public) resolves the token to an ad ID
    and returns a small HTML page with two `<video>` elements (for seamless
    swapping) and a script that fetches `GET /api/ads/{id}/playlist?locale=&vt=`.
    That endpoint returns all LIVE ads in the campaign with presigned S3 URLs,
@@ -126,9 +128,9 @@ runs inside a single entrypoint, `BetterAdsApplication`.
    publisher gets is `GET /embed/{token}` on their own site, not anything in
    this dashboard.
 
-7. **Serving, SDK path (in progress).** A parallel, iframe-free path is being
-   built to replace the widget above with a framework-agnostic SDK (web,
-   React, React Native — see `placements/`). `POST
+7. **Serving, SDK path (current).** The frontend's framework-agnostic SDK
+   (web, React, React Native — see `placements/`) has replaced the widget
+   above as the primary integration path. `POST
    /api/v1/placements/{siteKey}/session` validates a registered site's origin
    and returns a signed session token plus a manifest for one ad; `POST
    /api/v1/placements/session/{sessionToken}/events` accepts an ordered
@@ -179,16 +181,20 @@ runs inside a single entrypoint, `BetterAdsApplication`.
 - **`features/`** — `FeatureProcessingService`, which orchestrates translation
   and speech evaluation into a persisted `AdVersion`.
 
-- **`embed/`** — Public widget serving (`EmbedController`/`EmbedService`):
-  generates and resolves embed tokens, renders the widget HTML (two-video
-  swap for seamless transitions, `postMessage` for dynamic sizing), and
+- **`embed/`** — **Deprecated.** Legacy public widget serving
+  (`EmbedController`/`EmbedService`), superseded by the `placements/` SDK.
+  Kept running unchanged for previously issued embed links; do not build new
+  features against it. Generates and resolves embed tokens, renders the
+  widget HTML (two-video swap for seamless transitions, `postMessage` for
+  dynamic sizing), and
   issues a signed view token into that HTML on every render. Campaign
   embed endpoint (`GET /api/campaigns/{id}/embed`) returns the embed
   URL for the campaign's first LIVE ad.
 
 - **`fraud/`** — `FraudService` (Redis-backed sliding-window IP rate check),
-  `ViewTokenService` (signed, one-time-use tokens tying a view back to a
-  genuine widget load), `PaymentRateLimiter` (Redis-backed, guards
+  `ViewTokenService` (**deprecated**, signed one-time-use tokens tying a view
+  back to a genuine legacy widget load — superseded by `placements/`'s
+  `SessionTokenService`), `PaymentRateLimiter` (Redis-backed, guards
   against card-testing abuse).
 
 - **`billing/`** — `BillingService` (per-view cost calculation and budget
@@ -200,13 +206,14 @@ runs inside a single entrypoint, `BetterAdsApplication`.
   locale variants, used by the `ADVERTISER`-facing `/api/links/{adId}`
   endpoint.
 
-- **`placements/`** — Phase 1 of the iframe → SDK migration: `SiteService`
-  (site registration, origin/bundle-ID validation), `SessionTokenService`
-  (HMAC-signed session tokens, its own dedicated secret), `SessionService`
-  (session creation with fraud gating, and the playback-event state machine
-  + viewability gate + billing trigger), `PlacementController`/
-  `SiteController`. Runs entirely in parallel with `embed/`/`fraud`'s
-  existing widget path — see "Placements API" below.
+- **`placements/`** — The frontend's SDK integration path (replaced the
+  `embed/` widget): `SiteService` (site registration, origin/bundle-ID
+  validation), `SessionTokenService` (HMAC-signed session tokens, its own
+  dedicated secret), `SessionService` (session creation with fraud gating,
+  and the playback-event state machine + viewability gate + billing
+  trigger), `PlacementController`/`SiteController`. Runs alongside the now
+  **deprecated** `embed/`/`fraud/ViewTokenService` widget path, which is
+  kept only for backward compatibility — see "Placements API" below.
 
 - **`config/`** — CORS properties, rate-limit properties/service/filter.
 

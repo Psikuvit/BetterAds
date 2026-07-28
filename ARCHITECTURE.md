@@ -10,6 +10,14 @@ both the REST API and the RabbitMQ consumer. Code is organized into packages
 by responsibility (auth, billing, fraud, AI, etc.), and an async worker
 pipeline handles ad processing via RabbitMQ.
 
+> **Note:** the legacy `/embed/{token}` iframe widget (`embed/` package,
+> `fraud/ViewTokenService`, `storage/entities/AdLink`, and the related
+> `AdController`/`CampaignController` endpoints described below) is
+> **deprecated**. The frontend now integrates exclusively through the
+> `placements/` SDK. The legacy path is marked `@Deprecated` in code and left
+> running unchanged, purely so previously issued embed links keep working —
+> it is documented here as-is for reference, not as guidance for new work.
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                          BetterAds Application                              │
@@ -244,7 +252,7 @@ during the HuggingFace translation call (~18s+).
 - `locales=["fr"]`: Sets status PROCESSING, returns 202, processes in
   background. SSE events notify the frontend of status changes in real-time.
 
-## Data Flow 3: Ad Serving (Viewer → Widget → API → S3)
+## Data Flow 3: Ad Serving (Viewer → Widget → API → S3) — deprecated legacy path
 
 The embed widget is served at campaign level (`GET /api/campaigns/{id}/embed`
 returns the embed URL for the campaign's first LIVE ad). The widget cycles
@@ -327,7 +335,7 @@ Viewer               Publisher Website      BetterAds              S3       Redi
     │    iframe            │                   │                     │        │
 ```
 
-### Campaign-Level Embed
+### Campaign-Level Embed (deprecated)
 
 The embed is served from the campaign dashboard (`GET /api/campaigns/{id}/embed`),
 not from individual ad pages. The endpoint returns the embed URL/snippet for the
@@ -959,9 +967,9 @@ on an ephemeral Redis nonce. See docs/phase1-fraud-comparison.md.
 ### Ad Serving & Management
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | /api/ads/{id} | **PUBLIC** | Serve ad (fraud + billing) |
-| GET | /api/ads/{id}/playlist | **PUBLIC** | Serve all LIVE ads in campaign |
-| GET | /api/ads/{id}/link | ADVERTISER/ADMIN | Get embed URL/snippet |
+| GET | /api/ads/{id} | **PUBLIC** | *Deprecated.* Serve ad (fraud + billing) — legacy embed widget only |
+| GET | /api/ads/{id}/playlist | **PUBLIC** | *Deprecated.* Serve all LIVE ads in campaign — legacy embed widget only |
+| GET | /api/ads/{id}/link | ADVERTISER/ADMIN | *Deprecated.* Get embed URL/snippet |
 | GET | /api/ads/{id}/preview | ADVERTISER/ADMIN | Untracked single-ad preview, no site key |
 | GET | /api/ads/{id}/validation | ADVERTISER/ADMIN | Poll processing status |
 | GET | /api/ads/{id}/events | ADVERTISER/ADMIN | SSE status stream |
@@ -979,7 +987,7 @@ on an ephemeral Redis nonce. See docs/phase1-fraud-comparison.md.
 ### Other Public
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | /embed/{token} | **PUBLIC** | Serve embed widget HTML |
+| GET | /embed/{token} | **PUBLIC** | *Deprecated.* Serve embed widget HTML |
 | GET | /api/links/{adId} | ADVERTISER | Redis-cached variant lookup |
 | GET | /api/analytics/advertiser | ADVERTISER | Cross-campaign dashboard |
 | POST | /api/payments/webhook | **PUBLIC** (Stripe sig) | Stripe webhook |
