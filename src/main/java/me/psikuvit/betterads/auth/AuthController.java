@@ -1,5 +1,6 @@
 package me.psikuvit.betterads.auth;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import me.psikuvit.betterads.auth.dto.ForgotPasswordRequest;
@@ -9,6 +10,9 @@ import me.psikuvit.betterads.auth.dto.LoginResponse;
 import me.psikuvit.betterads.auth.dto.MeResponse;
 import me.psikuvit.betterads.auth.dto.RefreshRequest;
 import me.psikuvit.betterads.auth.dto.ResetPasswordRequest;
+import me.psikuvit.betterads.auth.dto.VerifyResetCodeRequest;
+import me.psikuvit.betterads.auth.dto.VerifyResetCodeResponse;
+import me.psikuvit.betterads.security.ClientIpResolver;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -21,9 +25,14 @@ import java.util.Map;
 @Slf4j
 public class AuthController {
     private final AuthService authService;
+    private final ForgotPasswordService forgotPasswordService;
+    private final ClientIpResolver clientIpResolver;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, ForgotPasswordService forgotPasswordService,
+                          ClientIpResolver clientIpResolver) {
         this.authService = authService;
+        this.forgotPasswordService = forgotPasswordService;
+        this.clientIpResolver = clientIpResolver;
     }
 
     @PostMapping("/login")
@@ -82,16 +91,28 @@ public class AuthController {
     }
 
     @PostMapping("/forgot-password")
-    public ResponseEntity<?> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+    public ResponseEntity<?> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request,
+                                            HttpServletRequest httpRequest) {
         log.info("POST /auth/forgot-password called for email={}", request.email());
-        authService.forgotPassword(request.email());
-        return ResponseEntity.ok(Map.of("status", "if that email exists, a reset link has been sent"));
+        String ip = clientIpResolver.resolve(httpRequest);
+        forgotPasswordService.requestCode(request.email(), ip);
+        return ResponseEntity.ok(Map.of("status", "if that email exists, a reset code has been sent"));
+    }
+
+    @PostMapping("/verify-reset-code")
+    public ResponseEntity<VerifyResetCodeResponse> verifyResetCode(@Valid @RequestBody VerifyResetCodeRequest request,
+                                                                    HttpServletRequest httpRequest) {
+        log.info("POST /auth/verify-reset-code called for email={}", request.email());
+        String ip = clientIpResolver.resolve(httpRequest);
+        String resetToken = forgotPasswordService.verifyCode(request.email(), request.code(), ip);
+        log.info("Reset code verified for email={}", request.email());
+        return ResponseEntity.ok(new VerifyResetCodeResponse(resetToken));
     }
 
     @PostMapping("/reset-password")
     public ResponseEntity<?> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
         log.info("POST /auth/reset-password called");
-        authService.resetPassword(request.token(), request.newPassword());
+        forgotPasswordService.resetPassword(request.token(), request.newPassword());
         log.info("Password reset completed");
         return ResponseEntity.ok(Map.of("status", "password updated"));
     }

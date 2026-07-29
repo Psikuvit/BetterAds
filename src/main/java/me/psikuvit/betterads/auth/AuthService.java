@@ -8,10 +8,8 @@ import me.psikuvit.betterads.auth.exceptions.UserAlreadyExistsException;
 import me.psikuvit.betterads.security.JwtTokenProvider;
 import me.psikuvit.betterads.security.TokenHasher;
 import me.psikuvit.betterads.storage.dto.Role;
-import me.psikuvit.betterads.storage.entities.PasswordResetToken;
 import me.psikuvit.betterads.storage.entities.RefreshToken;
 import me.psikuvit.betterads.storage.entities.User;
-import me.psikuvit.betterads.storage.repositories.PasswordResetTokenRepository;
 import me.psikuvit.betterads.storage.repositories.RefreshTokenRepository;
 import me.psikuvit.betterads.storage.repositories.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,25 +26,19 @@ public class AuthService {
     private final JwtTokenProvider tokenProvider;
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenRepository refreshTokenRepository;
-    private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final TokenHasher tokenHasher;
     private final long refreshExpirationMs;
-    private final long resetExpirationMs;
 
     public AuthService(UserRepository userRepository, JwtTokenProvider tokenProvider, PasswordEncoder passwordEncoder,
                        RefreshTokenRepository refreshTokenRepository,
-                       PasswordResetTokenRepository passwordResetTokenRepository,
                        TokenHasher tokenHasher,
-                       @Value("${app.auth.refresh-expiration-ms:604800000}") long refreshExpirationMs,
-                       @Value("${app.auth.reset-expiration-ms:1800000}") long resetExpirationMs) {
+                       @Value("${app.auth.refresh-expiration-ms:604800000}") long refreshExpirationMs) {
         this.userRepository = userRepository;
         this.tokenProvider = tokenProvider;
         this.passwordEncoder = passwordEncoder;
         this.refreshTokenRepository = refreshTokenRepository;
-        this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.tokenHasher = tokenHasher;
         this.refreshExpirationMs = refreshExpirationMs;
-        this.resetExpirationMs = resetExpirationMs;
     }
 
     public LoginResponse login(String email, String password) {
@@ -120,34 +112,6 @@ public class AuthService {
                     refreshTokenRepository.save(rt);
                     log.info("Logged out userId={}", rt.getUserId());
                 });
-    }
-
-    public void forgotPassword(String email) {
-        // Always behave the same regardless of whether the email exists, to avoid user enumeration.
-        userRepository.findByEmail(email).ifPresent(user -> {
-            String rawToken = tokenHasher.generateOpaqueToken();
-            PasswordResetToken resetToken = new PasswordResetToken();
-            resetToken.setUserId(user.getId());
-            resetToken.setTokenHash(tokenHasher.hash(rawToken));
-            resetToken.setExpiresAt(Instant.now().plusMillis(resetExpirationMs));
-            passwordResetTokenRepository.save(resetToken);
-            log.info("Password reset requested for {}. Reset link: /auth/reset-password?token={}", email, rawToken);
-        });
-    }
-
-    public void resetPassword(String rawToken, String newPassword) {
-        PasswordResetToken resetToken = passwordResetTokenRepository.findByTokenHash(tokenHasher.hash(rawToken))
-                .filter(rt -> rt.getUsedAt() == null && rt.getExpiresAt().isAfter(Instant.now()))
-                .orElseThrow(() -> new AuthenticationException("Invalid or expired reset token"));
-
-        User user = userRepository.findById(resetToken.getUserId())
-                .orElseThrow(() -> new AuthenticationException("User no longer exists"));
-        user.setPasswordHash(passwordEncoder.encode(newPassword));
-        userRepository.save(user);
-
-        resetToken.setUsedAt(Instant.now());
-        passwordResetTokenRepository.save(resetToken);
-        log.info("Password reset completed for userId={}", user.getId());
     }
 
     private String issueRefreshToken(Long userId) {
