@@ -67,7 +67,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authz -> authz
                         .dispatcherTypeMatchers(DispatcherType.ERROR, DispatcherType.ASYNC).permitAll()
                         .requestMatchers("/auth/**").permitAll()
-                        .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers("/actuator/health/**").permitAll()
                         .requestMatchers("/actuator/**").hasRole("ADMIN") // narrowed: only health is public
                         .requestMatchers("/embed/**").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/ads/*").permitAll() // public ad serving
